@@ -1,0 +1,88 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.arch }} macOS build
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-13
+            arch: x86_64
+          - os: macos-14
+            arch: arm64
+    env:
+      PYTHON: python3
+      HIGHLIGHT_DESK_KEYCHAIN: "0"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install test media tools
+        run: brew install ffmpeg
+
+      - name: Fetch Sparkle
+        run: ./tools/fetch-sparkle.sh
+
+      - name: Build bundled LGPL FFmpeg + Streamlink
+        run: ./tools/build-runtime.sh
+
+      - name: Tests with bundled runtime
+        run: |
+          PATH="$PWD/mac/runtime/$(uname -m)/bin:$PATH" npm test
+          npm run check
+
+      - name: Build app
+        run: ./mac/build.sh
+
+      - name: Verify app
+        run: |
+          codesign --verify --deep --strict "mac/build/Highlight Desk.app"
+          test -x "mac/build/Highlight Desk.app/Contents/Resources/runtime/bin/ffmpeg"
+          test -x "mac/build/Highlight Desk.app/Contents/Resources/runtime/bin/streamlink"
+          test -d "mac/build/Highlight Desk.app/Contents/Frameworks/Sparkle.framework"
+
+      - name: Package unsigned artifact
+        run: |
+          mkdir -p mac/build/artifact
+          ditto -c -k --keepParent "mac/build/Highlight Desk.app" "mac/build/artifact/HighlightDesk-${RUNNER_ARCH}.zip"
+          hdiutil create -volname "Highlight Desk" -srcfolder "mac/build/Highlight Desk.app" -ov -format UDZO "mac/build/artifact/HighlightDesk-${RUNNER_ARCH}.dmg"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: HighlightDesk-${{ matrix.arch }}-unsigned
+          path: mac/build/artifact/
+          if-no-files-found: error
+          retention-days: 14
+
+  # Signed/notarized releases are intentionally manual until Apple, OAuth,
+  # Lemon Squeezy, and Sparkle release credentials are configured.
+  preflight:
+    name: Release preflight docs
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Show release gate
+        run: |
+          echo "Signed release is manual: ./mac/release.sh --check then ./mac/release.sh"
+          echo "See docs/RELEASE.md and docs/UPDATE.md."
