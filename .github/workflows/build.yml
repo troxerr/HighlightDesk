@@ -102,10 +102,14 @@ jobs:
       - name: Fail if FFmpeg or ffprobe is missing
         shell: pwsh
         run: |
-          ffmpeg -version | Select-Object -First 1
+          # Capture first: piping a native command into Select-Object -First 1
+          # closes the pipe early, which makes PowerShell report a failure.
+          $ffmpegVersion = ffmpeg -version
           if ($LASTEXITCODE -ne 0) { exit 1 }
-          ffprobe -version | Select-Object -First 1
+          $ffmpegVersion | Select-Object -First 1
+          $ffprobeVersion = ffprobe -version
           if ($LASTEXITCODE -ne 0) { exit 1 }
+          $ffprobeVersion | Select-Object -First 1
       - name: Tests
         run: npm test
       - name: Syntax check
