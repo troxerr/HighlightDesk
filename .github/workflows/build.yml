@@ -23,7 +23,7 @@ jobs:
         include:
           - os: macos-15-intel
             arch: x86_64
-          - os: macos-14
+          - os: macos-15
             arch: arm64
     env:
       PYTHON: python3
@@ -96,7 +96,7 @@ jobs:
   # Lemon Squeezy, and Sparkle release credentials are configured.
   preflight:
     name: Release preflight docs
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
       - name: Show release gate

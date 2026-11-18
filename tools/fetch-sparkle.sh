@@ -4,7 +4,6 @@ set -euo pipefail
 # Fetches the pinned Sparkle 2.10.1 framework used for auto-updates.
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 VERSION="2.10.1"
-SHA256="$(shasum -a 256 "$ROOT/.build/sparkle/Sparkle.tar.xz" 2>/dev/null | awk '{print $1}')"
 DEST="$ROOT/mac/vendor"
 mkdir -p "$DEST" "$ROOT/.build/sparkle"
 ARCHIVE="$ROOT/.build/sparkle/Sparkle.tar.xz"
