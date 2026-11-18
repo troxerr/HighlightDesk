@@ -1,0 +1,15 @@
+{
+  "name": "highlight-desk-windows",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Highlight Desk for Windows",
+  "author": "Highlight Desk",
+  "scripts": {
+    "stage": "node tools/stage.js",
+    "pack": "node tools/stage.js && electron-builder --config electron-builder.yml --win nsis --x64 --publish never"
+  },
+  "devDependencies": {
+    "electron": "45.3.4",
+    "electron-builder": "26.18.0"
+  }
+}

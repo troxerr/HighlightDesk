@@ -40,3 +40,5 @@ __pycache__/
 docs/live-session-*/
 docs/screenshots/
 .openai/
+win/stage/
+win/dist/
