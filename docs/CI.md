@@ -23,3 +23,7 @@ The signed/notarized release is deliberately manual. Use `./mac/release.sh --che
 - Unsigned artifacts are for QA only. They will be blocked by Gatekeeper on another Mac.
 - `tools/package-unsigned.sh` can create QA zips or DMGs; DMG creation needs an unsandboxed runner with `hdiutil`.
 - Never add a Sparkle private key, Lemon Squeezy secret, OAuth client secret, or Developer ID certificate to the repository. Use CI secrets and `tools/fetch-sparkle.sh`-style pinned downloads.
+
+## Release workflow
+
+`.github/workflows/release.yml` runs on `v*` tags only and uploads signed, notarized builds to private R2 storage. See [RELEASE.md](RELEASE.md) for secrets and setup. `build.yml` remains the unsigned QA build.

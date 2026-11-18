@@ -36,7 +36,47 @@ LENGTH="$(stat -f%z "$DMG")"
 PUB_DATE="$(date -u '+%a, %d %b %Y %H:%M:%S +0000')"
 
 mkdir -p "$(dirname "$OUTPUT")"
-cat > "$OUTPUT" <<XML
+ARCH_REQ=""
+if [[ "${ARCH:-}" == "arm64" ]]; then
+  ARCH_REQ="
+      <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>"
+fi
+ITEM_FILE="$(mktemp "${TMPDIR:-/tmp}/appcast-item.XXXXXX")"
+trap 'rm -f "$ITEM_FILE"' EXIT
+cat > "$ITEM_FILE" <<XML
+    <item>
+      <title>Chatclip ${VERSION}</title>
+      <pubDate>${PUB_DATE}</pubDate>
+      <sparkle:version>${BUILD}</sparkle:version>
+      <sparkle:shortVersionString>${VERSION}</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>13.5</sparkle:minimumSystemVersion>${ARCH_REQ}
+      <description><![CDATA[${RELEASE_NOTES}]]></description>
+      <enclosure url="${DOWNLOAD_URL}"
+                 sparkle:edSignature="${SIGNATURE}"
+                 length="${LENGTH}"
+                 type="application/octet-stream"/>
+    </item>
+XML
+
+# EXISTING_APPCAST: an earlier appcast to add this item to (newest first), so
+# one feed carries every architecture and past release.
+if [[ -n "${EXISTING_APPCAST:-}" && -s "$EXISTING_APPCAST" ]]; then
+  /usr/bin/python3 - "$EXISTING_APPCAST" "$ITEM_FILE" "$OUTPUT" <<'PY'
+import sys
+existing, item, out = sys.argv[1:4]
+text = open(existing, encoding="utf-8").read()
+new = open(item, encoding="utf-8").read()
+marker = text.find("<item>")
+if marker < 0:
+    marker = text.find("</channel>")
+    if marker < 0:
+        sys.exit("existing appcast has no <channel>")
+else:
+    marker = text.rfind("\n", 0, marker) + 1
+open(out, "w", encoding="utf-8").write(text[:marker] + new + text[marker:])
+PY
+else
+  cat > "$OUTPUT" <<XML
 <?xml version="1.0" encoding="utf-8"?>
 <rss version="2.0"
      xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle"
@@ -46,21 +86,11 @@ cat > "$OUTPUT" <<XML
     <link>${DOWNLOAD_URL%/*}/</link>
     <description>Chatclip releases</description>
     <language>en</language>
-    <item>
-      <title>Chatclip ${VERSION}</title>
-      <pubDate>${PUB_DATE}</pubDate>
-      <sparkle:version>${BUILD}</sparkle:version>
-      <sparkle:shortVersionString>${VERSION}</sparkle:shortVersionString>
-      <sparkle:minimumSystemVersion>13.5</sparkle:minimumSystemVersion>
-      <description><![CDATA[${RELEASE_NOTES}]]></description>
-      <enclosure url="${DOWNLOAD_URL}"
-                 sparkle:edSignature="${SIGNATURE}"
-                 length="${LENGTH}"
-                 type="application/octet-stream"/>
-    </item>
+$(cat "$ITEM_FILE")
   </channel>
 </rss>
 XML
+fi
 
 echo "Wrote $OUTPUT"
 echo "Set SUFeedURL to the public URL of this appcast and SUPublicEDKey to the matching public key."

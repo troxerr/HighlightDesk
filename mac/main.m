@@ -10,6 +10,7 @@
 #import <UserNotifications/UserNotifications.h>
 #import "ui/HDUI.h"
 #import "ui/HDSymbols.h"
+#import "license/HDLicenseManager.h"
 
 #if __has_include(<Sparkle/Sparkle.h>)
 #import <Sparkle/Sparkle.h>
@@ -188,6 +189,8 @@ static NSString *const kConfigTemplate =
 #endif
 @property(copy) NSString *licenseAction;
 @property BOOL licenseValid;
+@property(strong, nonatomic) HDLicenseManager *licenseManager;
+@property(copy) NSString *pendingLicenseKey;
 @property BOOL freeTier;
 @property BOOL licenseRequired;
 @property BOOL licenseSilent;
@@ -385,17 +388,35 @@ static NSString *HDByteString(unsigned long long bytes) {
   return config;
 }
 
-- (NSString *)licenseKeyValue {
+// The key, instance ID and last-validated time live in the Keychain
+// (HDLicenseManager). Older builds kept them in the plaintext config; move them once.
+- (HDLicenseManager *)licenseManager {
+  if (_licenseManager) return _licenseManager;
+  HDLicenseManager *manager = [HDLicenseManager new];
+  __weak typeof(self) weakSelf = self;
+  manager.onStateChange = ^(HDLicenseStanding state) { [weakSelf licenseStateChanged:state]; };
+  _licenseManager = manager;
   NSMutableDictionary *config = [self licenseConfig];
-  NSDictionary *license = config[@"license"];
-  return [license[@"key"] isKindOfClass:[NSString class]] ? license[@"key"] : @"";
+  NSMutableDictionary *legacy = config[@"license"];
+  NSString *legacyKey = [legacy[@"key"] isKindOfClass:[NSString class]] ? legacy[@"key"] : @"";
+  NSString *legacyInstance = [legacy[@"instance"] isKindOfClass:[NSString class]] ? legacy[@"instance"] : @"";
+  if (legacyKey.length && legacyInstance.length) {
+    NSDate *date = [[self licenseDateFormatter] dateFromString:[legacy[@"lastValidatedAt"] isKindOfClass:[NSString class]] ? legacy[@"lastValidatedAt"] : @""];
+    [manager migrateLegacyKey:legacyKey instanceId:legacyInstance lastValidated:date];
+    if (manager.hasCredentials) {
+      legacy[@"key"] = @"";
+      legacy[@"instance"] = @"";
+      legacy[@"lastValidatedAt"] = @"";
+      [self writeConfig:config];
+    }
+  }
+  [manager refresh];
+  return manager;
 }
 
-- (NSString *)licenseInstanceValue {
-  NSMutableDictionary *config = [self licenseConfig];
-  NSDictionary *license = config[@"license"];
-  return [license[@"instance"] isKindOfClass:[NSString class]] ? license[@"instance"] : @"";
-}
+- (NSString *)licenseKeyValue { return self.licenseManager.licenseKey; }
+
+- (NSString *)licenseInstanceValue { return self.licenseManager.instanceId; }
 
 - (BOOL)licenseIsRequired {
   NSString *env = NSProcessInfo.processInfo.environment[@"HIGHLIGHT_DESK_LICENSE_REQUIRED"];
@@ -440,12 +461,8 @@ static NSString *HDByteString(unsigned long long bytes) {
   return MAX(0, total - used);
 }
 
-- (BOOL)licenseValidationFresh {
-  NSMutableDictionary *config = [self licenseConfig];
-  NSString *last = config[@"license"][@"lastValidatedAt"];
-  NSDate *date = [[self licenseDateFormatter] dateFromString:last ?: @""];
-  return date && [[NSDate date] timeIntervalSinceDate:date] <= 14 * 86400;
-}
+// A paid license stays usable offline for 14 days after its last successful validation.
+- (BOOL)licenseValidationFresh { return self.licenseManager.isWithinGrace; }
 
 // Free plan allowance, read from the recorder's usage file (see lib/freetier.js).
 - (NSString *)freeTierNote {
@@ -469,6 +486,7 @@ static NSString *HDByteString(unsigned long long bytes) {
 - (void)refreshFreeTierNote { [self.ui setPlanNote:[self freeTierNote]]; }
 
 - (void)refreshLicenseState {
+  (void)self.licenseManager;  // loads Keychain state and starts Sparkle if already licensed
   self.licenseRequired = [self licenseIsRequired];
   self.trialDays = [self configuredTrialDays];
   if (!self.licenseRequired) {
@@ -518,23 +536,33 @@ static NSString *HDByteString(unsigned long long bytes) {
   return value ?: @"";
 }
 
-- (void)storeLicenseKey:(NSString *)key instance:(NSString *)instance {
+- (void)clearLicense {
+  [self.licenseManager clear];
   NSMutableDictionary *config = [self licenseConfig];
   if (!config) return;
   NSMutableDictionary *license = config[@"license"];
-  license[@"key"] = key ?: @"";
-  license[@"instance"] = instance ?: @"";
+  license[@"email"] = @"";
+  license[@"productName"] = @"";
   [self writeConfig:config];
 }
 
-- (void)clearLicense {
-  NSMutableDictionary *config = [self licenseConfig];
-  if (!config) return;
-  NSMutableDictionary *license = config[@"license"];
-  license[@"key"] = @"";
-  license[@"instance"] = @"";
-  license[@"lastValidatedAt"] = @"";
-  [self writeConfig:config];
+// Sparkle only runs while a license is on file and recently validated. Trial and
+// free-plan users do not get automatic update checks.
+- (void)licenseStateChanged:(HDLicenseStanding)state {
+#if HD_SPARKLE
+  BOOL licensed = state == HDLicenseStandingValid;
+  if (licensed && !self.updaterController) {
+    NSString *feed = NSBundle.mainBundle.infoDictionary[@"SUFeedURL"];
+    NSString *edKey = NSBundle.mainBundle.infoDictionary[@"SUPublicEDKey"];
+    if ([feed isKindOfClass:[NSString class]] && feed.length && [edKey isKindOfClass:[NSString class]] && edKey.length) {
+      self.updaterController = [[SPUStandardUpdaterController alloc] initWithStartingUpdater:NO updaterDelegate:nil userDriverDelegate:nil];
+      [self.updaterController.updater setAutomaticallyChecksForUpdates:YES];
+      [self.updaterController startUpdater];
+    }
+  } else if (!licensed && self.updaterController) {
+    [self.updaterController.updater setAutomaticallyChecksForUpdates:NO];
+  }
+#endif
 }
 
 - (void)updateLicenseUI {
@@ -667,6 +695,11 @@ static NSString *HDByteString(unsigned long long bytes) {
 
 - (void)runLicenseAction:(NSString *)action silent:(BOOL)silent {
   if (self.licenseTask && self.licenseTask.running) return;
+  if ([action isEqualToString:@"activate"] && ![self licenseProductId].length) {
+    // Without a product ID any Lemon Squeezy key would activate.
+    if (!silent) [self alert:@"Licensing is not configured" info:@"This build has no product ID. Set HDProductId when building the release."];
+    return;
+  }
   NSString *resource = NSBundle.mainBundle.resourcePath;
   NSString *helper = [resource stringByAppendingPathComponent:@"tools/license.js"];
   NSString *node = [resource stringByAppendingPathComponent:@"node"];
@@ -684,13 +717,14 @@ static NSString *HDByteString(unsigned long long bytes) {
   task.arguments = @[helper, @"--action", action];
   NSMutableDictionary *environment = [NSProcessInfo.processInfo.environment mutableCopy];
   environment[@"PATH"] = [[self searchPaths] componentsJoinedByString:@":"];
-  NSString *key = [self licenseKeyValue];
+  // An activation uses the key typed by the user; it is stored only after Lemon Squeezy accepts it.
+  NSString *key = [action isEqualToString:@"activate"] ? (self.pendingLicenseKey ?: @"") : [self licenseKeyValue];
   NSString *instance = [self licenseInstanceValue];
   if (key.length) environment[@"LEMON_LICENSE_KEY"] = key;
   if (instance.length) environment[@"LEMON_INSTANCE_ID"] = instance;
   if ([self licenseProductId].length) environment[@"LEMON_PRODUCT_ID"] = [self licenseProductId];
   if ([self licenseApiBase].length) environment[@"LEMON_API_BASE"] = [self licenseApiBase];
-  environment[@"LEMON_INSTANCE_NAME"] = [NSString stringWithFormat:@"%@ - Chatclip", [[NSHost currentHost] localizedName] ?: @"Mac"];
+  environment[@"LEMON_INSTANCE_NAME"] = [HDLicenseManager instanceName];
   task.environment = environment;
 
   NSPipe *stdoutPipe = [NSPipe pipe];
@@ -753,25 +787,30 @@ static NSString *HDByteString(unsigned long long bytes) {
     self.licenseValid = [self licenseTrialDaysLeft] > 0;
   } else if ([action isEqualToString:@"activate"] && [result[@"ok"] boolValue]) {
     NSString *instanceId = [result[@"instanceId"] isKindOfClass:[NSString class]] ? result[@"instanceId"] : @"";
-    if (instanceId.length) {
-      [self storeLicenseKey:[self.licenseKeyField.stringValue stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]] instance:instanceId];
+    if (instanceId.length && self.pendingLicenseKey.length) {
+      [self.licenseManager recordActivationWithKey:self.pendingLicenseKey instanceId:instanceId];
+      self.pendingLicenseKey = nil;
       NSMutableDictionary *config = [self licenseConfig];
       NSMutableDictionary *license = config[@"license"];
-      license[@"lastValidatedAt"] = [[self licenseDateFormatter] stringFromDate:[NSDate date]];
       license[@"email"] = [result[@"customerEmail"] isKindOfClass:[NSString class]] ? result[@"customerEmail"] : @"";
       license[@"productName"] = [result[@"productName"] isKindOfClass:[NSString class]] ? result[@"productName"] : @"";
       [self writeConfig:config];
       self.licenseValid = YES;
     }
   } else if ([action isEqualToString:@"validate"] && ok) {
+    [self.licenseManager recordValidation];
     NSMutableDictionary *config = [self licenseConfig];
-    config[@"license"][@"lastValidatedAt"] = [[self licenseDateFormatter] stringFromDate:[NSDate date]];
     if ([result[@"customerEmail"] isKindOfClass:[NSString class]]) config[@"license"][@"email"] = result[@"customerEmail"];
     [self writeConfig:config];
     self.licenseValid = YES;
   } else if ([action isEqualToString:@"validate"]) {
-    self.licenseValid = [self licenseTrialDaysLeft] > 0;
+    // Offline or a server error says nothing about the key: keep it, and the 14-day grace applies.
+    // Anything else (refunded, revoked, expired, not found) clears the Keychain and locks Pro.
+    BOOL transient = !result || [result[@"transient"] boolValue];
+    if (!transient) [self clearLicense];
+    self.licenseValid = (transient && self.licenseManager.isWithinGrace) || [self licenseTrialDaysLeft] > 0;
   }
+  if ([action isEqualToString:@"activate"]) self.pendingLicenseKey = nil;
   self.freeTier = self.licenseRequired && !self.licenseValid;
   [self refreshFreeTierNote];
   [self updateLicenseUI];
@@ -843,7 +882,7 @@ static NSString *HDByteString(unsigned long long bytes) {
     return;
   }
   self.licenseKeyField.stringValue = key;
-  [self storeLicenseKey:key instance:[self licenseInstanceValue]];
+  self.pendingLicenseKey = key;
   [self runLicenseAction:@"activate" silent:NO];
 }
 

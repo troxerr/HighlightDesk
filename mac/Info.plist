@@ -45,7 +45,7 @@
   <key>SUPublicEDKey</key>
   <string></string>
   <key>SUEnableAutomaticChecks</key>
-  <true/>
+  <false/>
   <key>LSMinimumSystemVersion</key>
   <string>13.5</string>
   <key>NSHighResolutionCapable</key>

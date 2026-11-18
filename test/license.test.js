@@ -107,3 +107,56 @@ test("parseArgs supports the helper command line", () => {
     "license-key": "ABC-123"
   });
 });
+
+test("a license with no product metadata is rejected when a product is expected", async () => {
+  const noMeta = { ...ACTIVATE, meta: {} };
+  await assert.rejects(
+    () => licenseRequest("activate", { licenseKey: "ABC-123", productId: "123", fetchImpl: async () => response(noMeta) }),
+    /could not be matched/
+  );
+});
+
+test("network failures and 5xx responses are marked transient", async () => {
+  await assert.rejects(
+    () => licenseRequest("validate", { licenseKey: "K", instanceId: "i", fetchImpl: async () => { throw new TypeError("fetch failed"); } }),
+    (error) => error.transient === true
+  );
+  await assert.rejects(
+    () => licenseRequest("validate", { licenseKey: "K", instanceId: "i", fetchImpl: async () => response({}, 503) }),
+    (error) => error.transient === true
+  );
+});
+
+test("an invalid key is not transient", async () => {
+  await assert.rejects(
+    () => licenseRequest("validate", { licenseKey: "K", instanceId: "i", fetchImpl: async () => response({ valid: false, error: "license_key not found" }, 404) }),
+    (error) => !error.transient
+  );
+});
+
+test("build.sh compiles the license manager and links IOKit", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const script = fs.readFileSync(path.join(__dirname, "..", "mac", "build.sh"), "utf8");
+  assert.match(script, /license\/HDLicenseManager\.m/);
+  assert.match(script, /license\/HDKeychain\.m/);
+  assert.match(script, /-framework IOKit/);
+});
+
+test("license data is stored in the Keychain with a 14-day grace window", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const source = fs.readFileSync(path.join(__dirname, "..", "mac", "license", "HDLicenseManager.m"), "utf8");
+  for (const account of ["license_key", "instance_id", "last_validated_timestamp"]) assert.match(source, new RegExp(account));
+  assert.match(source, /14 \* 24 \* 60 \* 60/);
+  assert.match(source, /kIOPlatformUUIDKey/);
+});
+
+test("release workflow publishes privately and never creates a GitHub Release", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const workflow = fs.readFileSync(path.join(__dirname, "..", ".github", "workflows", "release.yml"), "utf8");
+  assert.match(workflow, /tags: \["v\*"\]/);
+  assert.doesNotMatch(workflow, /action-gh-release|gh release|upload-artifact/);
+  assert.doesNotMatch(workflow, /pull_request/);
+});

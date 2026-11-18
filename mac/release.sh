@@ -37,7 +37,7 @@ if [[ "${1:-}" == "--check" ]]; then
   else
     fail "Developer ID signing identity not installed"
   fi
-  [[ -n "$NOTARY_PROFILE" || ( -n "${APPLE_ID:-}" && -n "${TEAM_ID:-}" && -n "${APP_PASSWORD:-}" ) ]] && pass "notary credentials configured" || fail "NOTARY_PROFILE or Apple ID credentials not configured"
+  [[ -n "$NOTARY_PROFILE" || ( -n "${APPLE_API_KEY_PATH:-}" && -n "${APPLE_API_KEY_ID:-}" && -n "${APPLE_API_ISSUER_ID:-}" ) || ( -n "${APPLE_ID:-}" && -n "${TEAM_ID:-}" && -n "${APP_PASSWORD:-}" ) ]] && pass "notary credentials configured" || fail "NOTARY_PROFILE or Apple ID credentials not configured"
   [[ -x "$ROOT/mac/runtime/$ARCH/bin/ffmpeg" ]] && pass "bundled FFmpeg ($ARCH)" || fail "bundled FFmpeg missing for $ARCH (run tools/build-runtime.sh)"
   [[ -x "$ROOT/mac/runtime/$ARCH/bin/streamlink" ]] && pass "bundled Streamlink ($ARCH)" || fail "bundled Streamlink missing for $ARCH"
   [[ -d "$APP_DIR/Contents/Frameworks/Sparkle.framework" ]] && pass "Sparkle framework embedded" || fail "Sparkle framework missing"
@@ -119,10 +119,12 @@ codesign --force --sign "$IDENTITY" "$DMG"
 echo "Notarizing $DMG…"
 if [[ -n "$NOTARY_PROFILE" ]]; then
   xcrun notarytool submit "$DMG" --keychain-profile "$NOTARY_PROFILE" --wait
+elif [[ -n "${APPLE_API_KEY_PATH:-}" && -n "${APPLE_API_KEY_ID:-}" && -n "${APPLE_API_ISSUER_ID:-}" ]]; then
+  xcrun notarytool submit "$DMG" --key "$APPLE_API_KEY_PATH" --key-id "$APPLE_API_KEY_ID" --issuer "$APPLE_API_ISSUER_ID" --wait
 elif [[ -n "${APPLE_ID:-}" && -n "${TEAM_ID:-}" && -n "${APP_PASSWORD:-}" ]]; then
   xcrun notarytool submit "$DMG" --apple-id "$APPLE_ID" --team-id "$TEAM_ID" --password "$APP_PASSWORD" --wait
 else
-  echo "Set NOTARY_PROFILE, or APPLE_ID + TEAM_ID + APP_PASSWORD." >&2
+  echo "Set NOTARY_PROFILE, APPLE_API_KEY_PATH + APPLE_API_KEY_ID + APPLE_API_ISSUER_ID, or APPLE_ID + TEAM_ID + APP_PASSWORD." >&2
   echo "DMG created but not notarized: $DMG" >&2
   exit 1
 fi
@@ -142,6 +144,6 @@ echo "Release DMG: $DMG"
 if [[ -n "${SU_FEED_URL:-}" && -n "${SPARKLE_PUBLIC_KEY:-}" ]]; then
   echo "Sparkle feed URL configured: $SU_FEED_URL"
   echo "Generate/sign the appcast with:"
-  echo "  VERSION=$VERSION BUILD=$BUILD DOWNLOAD_URL=<public dmg url> DMG=\"$DMG\" ./tools/make-appcast.sh"
+  echo "  VERSION=$VERSION BUILD=<CFBundleVersion> DOWNLOAD_URL=<public dmg url> DMG=\"$DMG\" ./tools/make-appcast.sh"
   echo "and set SUFeedURL=$SU_FEED_URL, SUPublicEDKey=$SPARKLE_PUBLIC_KEY at build time."
 fi

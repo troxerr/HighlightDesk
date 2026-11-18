@@ -21,8 +21,10 @@ function normalize(data, action, expectedProductId = "") {
   const instance = data.instance || {};
   const status = String(license.status || "");
   const productId = meta.product_id === undefined || meta.product_id === null ? "" : String(meta.product_id);
-  if (expectedProductId && productId && productId !== String(expectedProductId)) {
-    throw new Error(`This license belongs to a different product (${productId}).`);
+  if (expectedProductId && productId !== String(expectedProductId)) {
+    throw new Error(productId
+      ? `This license belongs to a different product (${productId}).`
+      : "This license could not be matched to Chatclip.");
   }
   const ok = action === "activate"
     ? Boolean(data.activated)
@@ -43,6 +45,12 @@ function normalize(data, action, expectedProductId = "") {
     activationLimit: license.activation_limit || null,
     activationUsage: license.activation_usage || null
   };
+}
+
+function transientError(message) {
+  const error = new Error(message);
+  error.transient = true;
+  return error;
 }
 
 async function licenseRequest(action, {
@@ -66,15 +74,21 @@ async function licenseRequest(action, {
     if (!instanceId) throw new Error("An instance ID is required.");
     body.set("instance_id", instanceId);
   }
-  const response = await fetchImpl(`${String(apiBase).replace(/\/$/, "")}${paths[action]}`, {
-    method: "POST",
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/x-www-form-urlencoded"
-    },
-    body,
-    signal: AbortSignal.timeout(30000)
-  });
+  let response;
+  try {
+    response = await fetchImpl(`${String(apiBase).replace(/\/$/, "")}${paths[action]}`, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/x-www-form-urlencoded"
+      },
+      body,
+      signal: AbortSignal.timeout(30000)
+    });
+  } catch (cause) {
+    // Offline, DNS failure or timeout: says nothing about whether the key is valid.
+    throw transientError("Could not reach the license service. Check your connection.");
+  }
   let data = {};
   try {
     data = await response.json();
@@ -82,6 +96,9 @@ async function licenseRequest(action, {
     data = {};
   }
   if (!response.ok) {
+    if (response.status >= 500 || response.status === 429) {
+      throw transientError(data.error || data.message || `License service unavailable (${response.status}).`);
+    }
     throw new Error(data.error || data.message || `License service failed (${response.status}).`);
   }
   if (data.error) throw new Error(String(data.error));
@@ -105,7 +122,7 @@ async function main() {
 
 if (require.main === module) {
   main().catch((error) => {
-    process.stdout.write(JSON.stringify({ ok: false, error: error.message }) + "\n");
+    process.stdout.write(JSON.stringify({ ok: false, error: error.message, transient: Boolean(error.transient) }) + "\n");
     process.exitCode = 1;
   });
 }

@@ -53,3 +53,7 @@ For CI, set `SPARKLE_KEY_FILE` to the exported private key instead of relying on
 5. Test while a capture is running and while the app is offline.
 
 Do not ship update code with a test key or a localhost feed.
+
+## License gating and CI
+
+Sparkle starts only after a license is on file and was validated in the last 14 days (`licenseStateChanged:` in `mac/main.m`); trial and free-plan users get no automatic checks. `SUEnableAutomaticChecks` is `false` in `mac/Info.plist` for that reason. The release workflow passes `EXISTING_APPCAST` to `tools/make-appcast.sh` so one `appcast.xml` carries both architectures (the arm64 item has `sparkle:hardwareRequirements`). See [RELEASE.md](RELEASE.md).
