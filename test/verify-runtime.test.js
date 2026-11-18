@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { analyzeFfmpeg } = require("../tools/verify-runtime.js");
+const { analyzeFfmpeg, summaryMarkdown } = require("../tools/verify-runtime.js");
 
 const header = (config) => `ffmpeg version n7.1.1 Copyright (c) 2000-2025 the FFmpeg developers\nbuilt with gcc 14\nconfiguration: ${config}\nlibavutil      59. 39.100 / 59. 39.100\n`;
 const encoders = (...names) => ` V....D mpeg4                MPEG-4 part 2\n A....D aac                  AAC (Advanced Audio Coding)\n` +
@@ -55,4 +55,21 @@ test("the checker flags this machine's distro FFmpeg, which is GPL", { skip: pro
   const encodersOut = spawnSync("ffmpeg", ["-hide_banner", "-encoders"], { encoding: "utf8" }).stdout;
   const result = analyzeFfmpeg({ version: version.stdout, encoders: encodersOut });
   if (/--enable-gpl/.test(version.stdout)) assert.equal(result.ok, false, "a GPL distro build must not pass");
+});
+
+test("the report carries the exact version and configure line for the LGPL notice", () => {
+  const config = "--disable-debug --enable-version3 --enable-libopenh264 --enable-nvenc";
+  const result = analyzeFfmpeg({ version: header(config), encoders: encoders("h264_mf", "libopenh264") });
+  assert.equal(result.configuration, config);
+  assert.match(result.version, /^ffmpeg version n7\.1\.1/);
+  const markdown = summaryMarkdown(result, "streamlink 8.6.3");
+  assert.ok(markdown.includes(config), "the configure line is in the CI summary verbatim");
+  assert.ok(markdown.includes("`libopenh264`"));
+  assert.ok(markdown.includes("streamlink 8.6.3"));
+});
+
+test("the summary still renders when the build reports nothing", () => {
+  const markdown = summaryMarkdown(analyzeFfmpeg({ version: "", encoders: "" }), "");
+  assert.ok(markdown.includes("(not reported)"));
+  assert.ok(markdown.includes("not found"));
 });

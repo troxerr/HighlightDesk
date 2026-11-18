@@ -7,6 +7,7 @@
 //
 //   node tools/verify-runtime.js [--bin <dir>]
 
+const fs = require("node:fs");
 const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 
@@ -25,7 +26,27 @@ function analyzeFfmpeg({ version = "", encoders = "" }) {
   for (const name of GPL_ENCODERS) if (names.has(name)) problems.push(`Contains the GPL encoder ${name}.`);
   const h264 = H264_ENCODERS.filter((name) => names.has(name));
   if (!h264.length) problems.push("Has no H.264 encoder the app can use.");
-  return { ok: problems.length === 0, problems, h264, hardware: HARDWARE.filter((name) => names.has(name)) };
+  const versionLine = (version.match(/^ffmpeg version.*$/m) || [""])[0].trim();
+  return { ok: problems.length === 0, problems, h264, hardware: HARDWARE.filter((name) => names.has(name)), version: versionLine, configuration: configuration.trim() };
+}
+
+// Markdown for the CI job summary: the exact version and configure line are
+// what the LGPL notice has to quote, so they are recorded on every run.
+function summaryMarkdown(report, streamlinkVersion) {
+  return [
+    "### Bundled runtime",
+    "",
+    `- FFmpeg: \`${report.version || "unknown"}\``,
+    `- H.264 encoders: ${report.h264.map((name) => "`" + name + "`").join(", ") || "none"}`,
+    `- Streamlink: ${streamlinkVersion ? "`" + streamlinkVersion + "`" : "not found"}`,
+    "",
+    "FFmpeg configure line:",
+    "",
+    "```",
+    report.configuration || "(not reported)",
+    "```",
+    ""
+  ].join("\n");
 }
 
 function run(command, args, bin) {
@@ -34,7 +55,7 @@ function run(command, args, bin) {
   return { status: result.status, stdout: String(result.stdout || ""), error: result.error };
 }
 
-function main(argv, out = console) {
+function main(argv, out = console, env = process.env) {
   const flag = argv.indexOf("--bin");
   const bin = flag >= 0 ? path.resolve(argv[flag + 1] || ".") : "";
   const ffmpeg = { version: run("ffmpeg", ["-hide_banner", "-version"], bin), encoders: run("ffmpeg", ["-hide_banner", "-encoders"], bin) };
@@ -46,6 +67,9 @@ function main(argv, out = console) {
   const streamlink = run("streamlink", ["--version"], bin);
   const streamlinkOk = !streamlink.error && streamlink.status === 0;
   out.log(JSON.stringify({ ffmpeg: report, streamlink: streamlinkOk ? streamlink.stdout.trim() : null }, null, 2));
+  if (env.GITHUB_STEP_SUMMARY) {
+    try { fs.appendFileSync(env.GITHUB_STEP_SUMMARY, summaryMarkdown(report, streamlinkOk ? streamlink.stdout.trim() : "") + "\n"); } catch {}
+  }
   if (!streamlinkOk) out.error("streamlink could not be run.");
   for (const problem of report.problems) out.error(problem);
   return report.ok && streamlinkOk ? 0 : 1;
@@ -53,4 +77,4 @@ function main(argv, out = console) {
 
 if (require.main === module) process.exit(main(process.argv.slice(2)));
 
-module.exports = { analyzeFfmpeg, main, GPL_ENCODERS };
+module.exports = { analyzeFfmpeg, summaryMarkdown, main, GPL_ENCODERS };

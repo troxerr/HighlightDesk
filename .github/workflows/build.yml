@@ -154,6 +154,12 @@ jobs:
           node tools/run-tests.js test/e2e-clip.test.js test/windows-priority.test.js
           if ($LASTEXITCODE -ne 0) { exit 1 }
 
+          # The software encoder a Windows "N" edition (no Media Foundation) would fall
+          # back to: force it and make the same real clip, so it is proven, not assumed.
+          $env:HIGHLIGHT_DESK_ENCODER = "libopenh264"
+          node tools/run-tests.js test/e2e-clip.test.js
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
       - name: Require pinned downloads
         if: env.RUNTIME_PINNED != 'True'
         shell: pwsh

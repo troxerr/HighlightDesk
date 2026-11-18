@@ -134,7 +134,7 @@ On Windows, secrets are encrypted with the signed-in user's Windows DPAPI key (t
 }
 ```
 
-The default encoder is hardware H.264 (`h264_videotoolbox`) so a bundled commercial app does not require GPL `libx264`. Set `HIGHLIGHT_DESK_ENCODER=libx264` only for development environments that already have it.
+The default encoder is hardware H.264 (`h264_videotoolbox`) so a bundled commercial app does not require GPL `libx264`. Set `HIGHLIGHT_DESK_ENCODER=<encoder>` (for example `libx264`, only where your FFmpeg has it, or `libopenh264`) to force one; any other value, or `auto`, is ignored. On Windows the app probes `h264_nvenc`, `h264_qsv`, `h264_amf`, `h264_mf` and then the software `libopenh264`, and uses the first that really encodes.
 
 `reframe.priority` is `normal` or `belowNormal` and sets the CPU priority of the clip export and 9:16 encodes (`HIGHLIGHT_DESK_PRIORITY` overrides it). It defaults to `belowNormal` on Windows, where the app shares a PC with a game and streaming software, and to `normal` elsewhere. The live recorder only stream-copies and always runs at normal priority. This lowers CPU priority only; a GPU encoder (NVENC, QSV, AMF) still shares the GPU with the game.
 
