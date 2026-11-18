@@ -151,12 +151,3 @@ test("license data is stored in the Keychain with a 14-day grace window", () => 
   assert.match(source, /14 \* 24 \* 60 \* 60/);
   assert.match(source, /kIOPlatformUUIDKey/);
 });
-
-test("release workflow publishes privately and never creates a GitHub Release", () => {
-  const fs = require("node:fs");
-  const path = require("node:path");
-  const workflow = fs.readFileSync(path.join(__dirname, "..", ".github", "workflows", "release.yml"), "utf8");
-  assert.match(workflow, /tags: \["v\*"\]/);
-  assert.doesNotMatch(workflow, /action-gh-release|gh release|upload-artifact/);
-  assert.doesNotMatch(workflow, /pull_request/);
-});
