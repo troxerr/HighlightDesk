@@ -149,7 +149,8 @@ jobs:
           $env:PATH = "$PWD\runtime\bin;$PWD\runtime\streamlink\bin;$node;C:\Windows\System32;C:\Windows;C:\Windows\System32\WindowsPowerShell\v1.0"
           "ffmpeg   : $((Get-Command ffmpeg).Source)"
           "streamlink: $((Get-Command streamlink).Source)"
-          node tools/verify-runtime.js
+          # Also proves the configure line quoted in the third-party notice is the real one.
+          node tools/verify-runtime.js --notice docs/THIRD_PARTY_NOTICES.md
           if ($LASTEXITCODE -ne 0) { exit 1 }
           node tools/run-tests.js test/e2e-clip.test.js test/windows-priority.test.js
           if ($LASTEXITCODE -ne 0) { exit 1 }

@@ -5,7 +5,10 @@
 // ship in the app: FFmpeg must be an LGPL build with no GPL or non-free parts
 // and no libx264/libx265, and it must still have an H.264 encoder to use.
 //
-//   node tools/verify-runtime.js [--bin <dir>]
+//   node tools/verify-runtime.js [--bin <dir>] [--notice <markdown file>]
+//
+// With --notice it also fails if the configure line quoted in that file differs
+// from the FFmpeg's real one.
 
 const fs = require("node:fs");
 const path = require("node:path");
@@ -49,6 +52,14 @@ function summaryMarkdown(report, streamlinkVersion) {
   ].join("\n");
 }
 
+// The configure line quoted in the third-party notice, so CI can prove the
+// notice describes the binary that actually ships (and goes red when a new pin
+// makes it stale). Looks for the fenced block after "Configure line, verbatim:".
+function noticeConfiguration(markdown) {
+  const match = String(markdown).match(/Configure line, verbatim:\s*```[^\n]*\n([\s\S]*?)\n```/);
+  return match ? match[1].trim() : "";
+}
+
 function run(command, args, bin) {
   const exe = bin ? path.join(bin, command) : command;
   const result = spawnSync(exe, args, { encoding: "utf8", timeout: 30000, windowsHide: true, maxBuffer: 16 * 1024 * 1024 });
@@ -64,6 +75,23 @@ function main(argv, out = console, env = process.env) {
     return 1;
   }
   const report = analyzeFfmpeg({ version: ffmpeg.version.stdout, encoders: ffmpeg.encoders.stdout });
+  const noticeFlag = argv.indexOf("--notice");
+  if (noticeFlag >= 0) {
+    let documented = "";
+    try { documented = noticeConfiguration(fs.readFileSync(path.resolve(argv[noticeFlag + 1] || ""), "utf8")); } catch {}
+    if (!documented) {
+      report.ok = false;
+      report.problems.push("The notice has no 'Configure line, verbatim:' block to compare.");
+    } else if (documented !== report.configuration) {
+      report.ok = false;
+      const a = documented.split(/\s+/), b = report.configuration.split(/\s+/);
+      const missing = b.filter((flag) => !a.includes(flag)), extra = a.filter((flag) => !b.includes(flag));
+      report.problems.push("The configure line in the notice does not match the bundled FFmpeg."
+        + (missing.length ? ` Missing from the notice: ${missing.join(" ")}.` : "")
+        + (extra.length ? ` Only in the notice: ${extra.join(" ")}.` : "")
+        + (!missing.length && !extra.length ? " (Same flags, different order or spacing.)" : ""));
+    }
+  }
   const streamlink = run("streamlink", ["--version"], bin);
   const streamlinkOk = !streamlink.error && streamlink.status === 0;
   out.log(JSON.stringify({ ffmpeg: report, streamlink: streamlinkOk ? streamlink.stdout.trim() : null }, null, 2));
@@ -77,4 +105,4 @@ function main(argv, out = console, env = process.env) {
 
 if (require.main === module) process.exit(main(process.argv.slice(2)));
 
-module.exports = { analyzeFfmpeg, summaryMarkdown, main, GPL_ENCODERS };
+module.exports = { analyzeFfmpeg, summaryMarkdown, noticeConfiguration, main, GPL_ENCODERS };
