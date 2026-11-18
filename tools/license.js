@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 "use strict";
 
+const { getSecret } = require("../lib/credentials.js");
+
 const DEFAULT_API_BASE = "https://api.lemonsqueezy.com";
 
 function parseArgs(argv) {
@@ -91,10 +93,16 @@ async function licenseRequest(action, {
   return normalize(data, action, productId);
 }
 
+// Order: --license-key, LEMON_LICENSE_KEY, then the credential store
+// (Windows DPAPI). The store is only read when the first two are empty.
+function resolveLicenseKey(args = {}, env = process.env, secret = getSecret) {
+  return String(args["license-key"] || env.LEMON_LICENSE_KEY || secret("license.key") || "").trim();
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const action = String(args.action || "validate").trim();
-  const licenseKey = String(args["license-key"] || process.env.LEMON_LICENSE_KEY || "").trim();
+  const licenseKey = resolveLicenseKey(args);
   const instanceName = String(args["instance-name"] || process.env.LEMON_INSTANCE_NAME || "Highlight Desk").trim();
   const instanceId = String(args["instance-id"] || process.env.LEMON_INSTANCE_ID || "").trim();
   const productId = String(args["product-id"] || process.env.LEMON_PRODUCT_ID || "").trim();
@@ -114,5 +122,6 @@ module.exports = {
   DEFAULT_API_BASE,
   parseArgs,
   normalize,
-  licenseRequest
+  licenseRequest,
+  resolveLicenseKey
 };
