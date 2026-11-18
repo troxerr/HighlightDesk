@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 "use strict";
 
+const { openUrl } = require("../lib/open-url.js");
 const crypto = require("node:crypto");
 const http = require("node:http");
-const { spawn } = require("node:child_process");
 
 const DROPBOX = {
   authorize: "https://www.dropbox.com/oauth2/authorize",
@@ -62,12 +62,7 @@ function buildAuthorizeUrl(provider, { clientId, redirect, state, challenge }) {
 }
 
 function openBrowser(url) {
-  const command = process.platform === "darwin" ? "open" : process.platform === "win32" ? "cmd" : "xdg-open";
-  const args = process.platform === "win32" ? ["/c", "start", "", url] : [url];
-  try {
-    const child = spawn(command, args, { stdio: "ignore", detached: true });
-    child.unref();
-  } catch {}
+  openUrl(url);
 }
 
 function serveCallback({ provider, port, state, timeoutMs = 300000 }) {
