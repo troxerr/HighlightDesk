@@ -74,7 +74,7 @@ test("activating stores the key in the secret store and the rest in the config",
   assert.equal(JSON.stringify(h.db.config).includes("KEY-123"), false, "the key is never written to the config file");
   assert.equal(h.db.config.license.instance, "inst-1");
   assert.equal(h.calls[0].action, "activate");
-  assert.equal(h.calls[0].options.instanceName, "Highlight Desk (TEST-PC)");
+  assert.equal(h.calls[0].options.instanceName, "ChatClip (TEST-PC)");
 });
 
 test("activation failures reach the user and change nothing", async () => {
