@@ -142,7 +142,9 @@ test("worker persists windows, health and reports and drains safely on close", a
 
 test("unwritable monitoring state does not crash the capture client", async () => {
   const messages = [];
-  const monitor = startMonitor({ dir: "/dev/null/nope", channel: "example", sessionId: "s", settings: policy.ROOT, onStatus: event => messages.push(event) });
+  const blocker = require("node:path").join(require("node:fs").mkdtempSync(require("node:path").join(require("node:os").tmpdir(), "hd-mon-")), "not-a-directory");
+  require("node:fs").writeFileSync(blocker, "x");
+  const monitor = startMonitor({ dir: require("node:path").join(blocker, "nope"), channel: "example", sessionId: "s", settings: policy.ROOT, onStatus: event => messages.push(event) });
   monitor.record({ kind: "window", time: Date.now() });
   await monitor.close();
   assert.ok(messages.some(m => m.type === "monitor-error"));

@@ -55,7 +55,7 @@ test("readConfig honors HIGHLIGHT_DESK_CONFIG", () => {
 
 test("reframeSettings clamps and defaults", () => {
   const defaults = config.reframeSettings({});
-  assert.deepEqual(defaults, { enabled: true, width: 1080, height: 1920, crf: 20, preset: "veryfast", blur: 20, encoder: "h264_videotoolbox", bitrate: "8M" });
+  assert.deepEqual(defaults, { enabled: true, width: 1080, height: 1920, crf: 20, preset: "veryfast", blur: 20, encoder: process.platform === "darwin" ? "h264_videotoolbox" : "auto", bitrate: "8M" });
 
   const custom = config.reframeSettings({
     reframe: { enabled: false, width: 999, height: 1001, crf: 99, preset: "nope", blur: 999 }

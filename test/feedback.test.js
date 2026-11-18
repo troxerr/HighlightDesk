@@ -83,7 +83,9 @@ test("a broken log line is skipped and logging never throws", () => {
   try {
     fs.writeFileSync(path.join(dir, "feedback.jsonl"), "{not json\n" + JSON.stringify({ kind: "clip-action", clipId: "x", action: "opened", at: "2026-11-16T10:00:00Z" }) + "\n");
     assert.equal(feedback.readEvents(dir).length, 1);
-    assert.equal(feedback.logEvent("x", {}, { dir: "/dev/null/nope" }), false);
+    const blocker = path.join(dir, "not-a-directory");
+    fs.writeFileSync(blocker, "x");
+    assert.equal(feedback.logEvent("x", {}, { dir: path.join(blocker, "nope") }), false);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
