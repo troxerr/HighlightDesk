@@ -96,6 +96,8 @@ The detector samples unique chatters per 5-second window and uses a median/MAD b
 
 Non-secret settings live in `~/.highlight-desk.json` (or `HIGHLIGHT_DESK_CONFIG`). The macOS app stores OAuth refresh tokens (and a legacy Dropbox app secret) in Keychain and clears those secrets from the config after migration. The CLI reads Keychain tokens through `security` by default; set `HIGHLIGHT_DESK_KEYCHAIN=0` to force config/env-only credentials.
 
+On Windows, secrets are encrypted with the signed-in user's Windows DPAPI key (through the built-in `powershell.exe`) and saved in `%APPDATA%\Highlight Desk\credentials.json`; other Windows users and other PCs cannot decrypt them. Manage them with `node tools/credentials.js set|has|delete|list <name>`. The names the app reads are `dropbox.refresh`, `dropbox.appSecret`, `google.refresh`, `google.clientSecret`, `kick.clientSecret`, `kick.relayToken` and `license.key` (names are case-sensitive). On Windows, `npm run dropbox:auth` and `npm run google:auth` save their tokens in the store and leave those config fields blank; if the store is unavailable they fall back to the 0600 config file with a warning, so a token is never lost. `node tools/credentials.js migrate [--config <file>]` moves secrets already in the config file (including `license.key`) into the store and blanks them there. `set` reads the secret from a hidden prompt or from stdin, and there is no command that prints a secret. Environment variables and the config file still take precedence over the store.
+
 ```json
 {
   "reframe": {
@@ -144,6 +146,8 @@ Set `reframe.layout` to `"split"` (or set `HIGHLIGHT_DESK_REFRAME_LAYOUT=split`)
 - `facecam` / `gameplay` — optional normalized `[0, 1]` crop rectangles (`{ "x": 0.015, "y": 0.70, "w": 0.25, "h": 0.28 }`) to override the corner preset or focus on a specific gameplay region.
 
 The default encoder is hardware H.264 (`h264_videotoolbox`) so a bundled commercial app does not require GPL `libx264`. Set `HIGHLIGHT_DESK_ENCODER=libx264` only for development environments that already have it.
+
+`reframe.priority` is `normal` or `belowNormal` and sets the CPU priority of the clip export and 9:16 encodes (`HIGHLIGHT_DESK_PRIORITY` overrides it). It defaults to `belowNormal` on Windows, where the app shares a PC with a game and streaming software, and to `normal` elsewhere. The live recorder only stream-copies and always runs at normal priority. This lowers CPU priority only; a GPU encoder (NVENC, QSV, AMF) still shares the GPU with the game.
 
 `storage.mode` is `local`, `dropbox`, or `googleDrive`. If it is omitted, a configured Dropbox connection is used first, then Google Drive, otherwise local.
 
@@ -288,14 +292,17 @@ dist/                    Browser dashboard (separate local tool)
 lib/manifest.js          Segment-list parsing and clip-window planning
 lib/exporter.js          Async landscape export + JSON sidecar
 lib/reframe.js           9:16 reframe with blurred background
+lib/priority.js          Lowers CPU priority of encode children
 lib/appconfig.js         Config/env parsing, storage modes, provider settings
 lib/dropbox.js           Dropbox OAuth refresh, folder creation, upload
 lib/google-drive.js      Google Drive OAuth refresh, folder creation, resumable upload
 lib/jobstore.js          Persistent upload queue and clip history
+lib/credentials.js       Secret store: macOS Keychain, Windows DPAPI
 lib/storage/             Provider selection and local adapter
 tools/dropbox-auth.js    Dropbox refresh-token helper
 tools/google-auth.js     Google Drive refresh-token helper
 tools/oauth-bridge.js    Browser OAuth helper used by the app
+tools/credentials.js     Manage secrets in the Windows credential store
 tools/license.js         Lemon Squeezy license helper
 tools/fetch-sparkle.sh   Fetch the pinned Sparkle framework
 tools/make-appcast.sh    Sign a release DMG into a Sparkle appcast

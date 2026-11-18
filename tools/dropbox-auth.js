@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 "use strict";
 
+const { openUrl } = require("../lib/open-url.js");
+const { saveSecrets } = require("../lib/credentials.js");
 const crypto = require("node:crypto");
 const fs = require("node:fs");
 const http = require("node:http");
 const path = require("node:path");
-const { spawn } = require("node:child_process");
 const readline = require("node:readline/promises");
 const { stdin, stdout } = require("node:process");
 
@@ -24,12 +25,7 @@ const TOKEN_URL = "https://api.dropboxapi.com/oauth2/token";
 const NO_REDIRECT = process.argv.includes("--no-redirect");
 
 function openBrowser(url) {
-  const command = process.platform === "darwin" ? "open" : process.platform === "win32" ? "cmd" : "xdg-open";
-  const args = process.platform === "win32" ? ["/c", "start", "", url] : [url];
-  try {
-    const child = spawn(command, args, { stdio: "ignore", detached: true });
-    child.unref();
-  } catch {}
+  openUrl(url);
 }
 
 function waitForCode(state) {
@@ -88,7 +84,9 @@ async function exchangeCode(code, appKey, appSecret, redirectUri = REDIRECT_URI)
   return data;
 }
 
-function mergeConfig(existing, { appKey, appSecret, refreshToken }) {
+// `stored` lists credential names that were saved in the credential store; those
+// fields are written blank so the config file never holds a second copy.
+function mergeConfig(existing, { appKey, appSecret, refreshToken }, stored = []) {
   const base = defaultConfig();
   const next = { ...base, ...(existing && typeof existing === "object" ? existing : {}) };
   next.dropbox = {
@@ -96,8 +94,8 @@ function mergeConfig(existing, { appKey, appSecret, refreshToken }) {
     ...((existing && existing.dropbox) || {}),
     enabled: true,
     appKey,
-    appSecret,
-    refreshToken
+    appSecret: stored.includes("dropbox.appSecret") ? "" : appSecret,
+    refreshToken: stored.includes("dropbox.refresh") ? "" : refreshToken
   };
   return next;
 }
@@ -161,17 +159,27 @@ async function main() {
     token = await exchangeCode(code, appKey, appSecret, REDIRECT_URI);
   }
 
-  const next = mergeConfig(loaded.config, { appKey, appSecret, refreshToken: token.refresh_token });
+  const saved = saveSecrets({ "dropbox.refresh": token.refresh_token, "dropbox.appSecret": appSecret });
+  const next = mergeConfig(loaded.config, { appKey, appSecret, refreshToken: token.refresh_token }, saved.stored);
 
   fs.mkdirSync(path.dirname(configPath), { recursive: true });
   fs.writeFileSync(configPath, JSON.stringify(next, null, 2) + "\n", { mode: 0o600 });
   try { fs.chmodSync(configPath, 0o600); } catch {}
 
-  console.log(`\nSaved the Dropbox refresh token to ${configPath}`);
+  for (const failure of saved.failed) {
+    console.warn(`\nCould not save ${failure.name} in the credential store (${failure.error}); it was kept in ${configPath} instead.`);
+  }
+  console.log(saved.stored.includes("dropbox.refresh")
+    ? `\nSaved the Dropbox refresh token in the Windows credential store (encrypted for your user).`
+    : `\nSaved the Dropbox refresh token to ${configPath}`);
   console.log("Restart capture (or restart Chatclip) to start uploading vertical clips.");
 }
 
-main().catch((error) => {
-  console.error(`\nDropbox setup failed: ${error.message}`);
-  process.exitCode = 1;
-});
+if (require.main === module) {
+  main().catch((error) => {
+    console.error(`\nDropbox setup failed: ${error.message}`);
+    process.exitCode = 1;
+  });
+}
+
+module.exports = { mergeConfig };

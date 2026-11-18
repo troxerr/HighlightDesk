@@ -15,6 +15,13 @@ Chatclip bundles or links the following components. This file is a summary; the 
 
 The FFmpeg libraries and binary in this app are licensed under the GNU Lesser General Public License v2.1 or later. You may obtain the complete corresponding source from <https://ffmpeg.org/releases/ffmpeg-7.1.1.tar.xz>. The build recipe, including every `./configure` flag used, is `tools/build-runtime.sh` in this project. For three years after you receive a copy of the app, you may also request the source and build scripts directly from the publisher at `<SUPPORT EMAIL — fill in before release>`. You may replace the bundled FFmpeg with your own build of the same libraries; the app looks for it in `Contents/Resources/runtime/bin`. The full LGPL text must ship in the app bundle alongside this notice.
 
+## Windows runtime (FFmpeg and Streamlink)
+
+The Windows app bundles builds that CI downloads and verifies against pinned SHA-256 values in `tools/runtime-win.json`.
+
+- **FFmpeg:** BtbN `win64-lgpl` build `n7.1.5-12-g1fdbca85aa` (release `autobuild-2026-07-31-14-10`). `tools/verify-runtime.js` fails the build if the binary reports `--enable-gpl` or `--enable-nonfree`, or contains `libx264`/`libx265`/`libxvid`. The verified build contains the encoders `h264_nvenc`, `h264_qsv`, `h264_amf`, `h264_mf` (Windows Media Foundation) and `libopenh264`. The exact configure flags, the corresponding source and the LGPL source offer still have to be recorded from that release before shipping (the release notes link its build scripts). If `libopenh264` is used, review the OpenH264 licence and patent position, because a copy built into FFmpeg is not covered by Cisco's binary licence.
+- **Streamlink:** 8.6.3 (`streamlink-8.6.3-1-py315-x86_64.zip`, portable build from `streamlink/windows-builds`). BSD 2-Clause, as for the macOS build; the portable folder also carries its own Python and Python packages, whose licences ship in that folder.
+
 ## Streamlink
 
 - **Version:** 8.6.2

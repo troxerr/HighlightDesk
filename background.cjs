@@ -222,9 +222,12 @@ function fatal(message) {
   shutdown(1);
 }
 
-const bundledRuntimeBin = path.join(__dirname, "runtime", "bin");
-if (fs.existsSync(bundledRuntimeBin)) {
-  process.env.PATH = bundledRuntimeBin + path.delimiter + (process.env.PATH || "");
+// Bundled binaries: FFmpeg in runtime/bin, and on Windows a portable Streamlink
+// folder (it keeps its own Python) in runtime/streamlink/bin.
+const bundledDirs = [path.join(__dirname, "runtime", "bin"), path.join(__dirname, "runtime", "streamlink", "bin")]
+  .filter((dir) => fs.existsSync(dir));
+if (bundledDirs.length) {
+  process.env.PATH = [...bundledDirs, process.env.PATH || ""].join(path.delimiter);
 }
 
 function preflight() {
@@ -707,10 +710,10 @@ async function runPipeline(job, plan, rawTarget) {
   };
 
   const files = plan.rows.map((row) => path.join(temp, row.file));
-  let result = await exportClip({ files, offset: plan.offset, duration: plan.duration, target: rawTarget, encoder: reframeConfig.encoder, bitrate: reframeConfig.bitrate });
+  let result = await exportClip({ files, offset: plan.offset, duration: plan.duration, target: rawTarget, encoder: reframeConfig.encoder, bitrate: reframeConfig.bitrate, priority: reframeConfig.priority });
   if (!result.ok) {
     emit("error", { message: `Export failed, retrying: ${result.error}` });
-    result = await exportClip({ files, offset: plan.offset, duration: plan.duration, target: rawTarget, encoder: reframeConfig.encoder, bitrate: reframeConfig.bitrate });
+    result = await exportClip({ files, offset: plan.offset, duration: plan.duration, target: rawTarget, encoder: reframeConfig.encoder, bitrate: reframeConfig.bitrate, priority: reframeConfig.priority });
   }
   if (!result.ok) {
     emit("clip-failed", { error: result.error, reason: job.reason });
@@ -745,7 +748,8 @@ async function runPipeline(job, plan, rawTarget) {
       camHeightRatio: reframeConfig.camHeightRatio,
       facecamCorner: reframeConfig.facecamCorner,
       facecam: reframeConfig.facecam,
-      gameplay: reframeConfig.gameplay
+      gameplay: reframeConfig.gameplay,
+      priority: reframeConfig.priority
     });
     if (!reframe.ok) {
       metadata.reframed = false;

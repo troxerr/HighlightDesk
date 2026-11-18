@@ -513,7 +513,8 @@ async function main() {
         camHeightRatio: reframeConfig.camHeightRatio,
         facecamCorner: reframeConfig.facecamCorner,
         facecam: reframeConfig.facecam,
-        gameplay: reframeConfig.gameplay
+        gameplay: reframeConfig.gameplay,
+        priority: reframeConfig.priority
       };
       let reframe = await reframeClip({ ...reframeOptions, extraFilters: extras.filters, ffmpegPath: extras.filters.length ? overlayPlan.ffmpeg : "ffmpeg" });
       if (!reframe.ok && extras.filters.length) {

@@ -66,6 +66,7 @@ test("reframeSettings clamps and defaults", () => {
     preset: "veryfast",
     blur: 20,
     encoder: process.platform === "darwin" ? "h264_videotoolbox" : "auto",
+    priority: process.platform === "win32" ? "belowNormal" : "normal",
     bitrate: "8M",
     layout: "blur",
     camHeightRatio: 0.35,
@@ -100,6 +101,10 @@ test("reframeSettings clamps and defaults", () => {
   assert.equal(custom.facecamCorner, "top-right");
   assert.deepEqual(custom.facecam, { x: 0.85, y: 0.85, w: 0.15, h: 0.15 });
   assert.deepEqual(custom.gameplay, { x: 0.1, y: 0.05, w: 0.8, h: 0.9 });
+
+  assert.equal(config.reframeSettings({ reframe: { priority: "belowNormal" } }, {}).priority, "belowNormal");
+  assert.equal(config.reframeSettings({ reframe: { priority: "normal" } }, {}).priority, "normal");
+  assert.equal(config.reframeSettings({ reframe: { priority: "nope" } }, { HIGHLIGHT_DESK_PRIORITY: "belowNormal" }).priority, "belowNormal");
 
   const invalidSplit = config.reframeSettings({
     reframe: { layout: "unknown", camHeightRatio: 0.05, facecamCorner: "center" }

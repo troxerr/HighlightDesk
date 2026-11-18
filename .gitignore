@@ -7,6 +7,7 @@ mac/build/
 *.partial
 .tmp-*
 mac/runtime/
+/runtime/
 .build/
 
 mac/build-redesign/
