@@ -7,7 +7,7 @@
 const { spawnSync } = require("node:child_process");
 
 const files = process.argv.slice(2);
-const result = spawnSync(process.execPath, ["--test", ...(files.length ? files : ["test/*.test.js"])], {
+const result = spawnSync(process.execPath, ["--test", ...(files.length ? files : ["test/*.test.js", "win/test/*.test.js"])], {
   stdio: "inherit",
   env: { ...process.env, HIGHLIGHT_DESK_KEYCHAIN: "0" }
 });
