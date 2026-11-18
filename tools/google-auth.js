@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 "use strict";
 
+const { openUrl } = require("../lib/open-url.js");
 const crypto = require("node:crypto");
 const fs = require("node:fs");
 const http = require("node:http");
 const path = require("node:path");
-const { spawn } = require("node:child_process");
 const readline = require("node:readline/promises");
 const { stdin, stdout } = require("node:process");
 
@@ -29,12 +29,7 @@ function base64url(buffer) {
 }
 
 function openBrowser(url) {
-  const command = process.platform === "darwin" ? "open" : process.platform === "win32" ? "cmd" : "xdg-open";
-  const args = process.platform === "win32" ? ["/c", "start", "", url] : [url];
-  try {
-    const child = spawn(command, args, { stdio: "ignore", detached: true });
-    child.unref();
-  } catch {}
+  openUrl(url);
 }
 
 function waitForCode(state) {
