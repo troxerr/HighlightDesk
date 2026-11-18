@@ -1,5 +1,5 @@
 {
-  "name": "highlight-desk",
+  "name": "chatclip",
   "version": "3.0.0",
   "private": true,
   "description": "Chat-driven Twitch highlights with 9:16 reframing and local, Dropbox, or Google Drive storage.",

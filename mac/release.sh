@@ -107,7 +107,7 @@ echo "Signing the app…"
 codesign --force --options runtime --timestamp --sign "$IDENTITY" --entitlements "$ENTITLEMENTS" "$APP_DIR"
 codesign --verify --deep --strict --verbose=2 "$APP_DIR"
 
-STAGE="$(mktemp -d "${TMPDIR:-/tmp}/highlight-desk-dmg.XXXXXX")"
+STAGE="$(mktemp -d "${TMPDIR:-/tmp}/chatclip-dmg.XXXXXX")"
 trap 'rm -rf "$STAGE"' EXIT
 cp -R "$APP_DIR" "$STAGE/"
 ln -s /Applications "$STAGE/Applications"
@@ -131,7 +131,7 @@ xcrun stapler staple "$DMG"
 xcrun stapler validate "$DMG"
 spctl -a -t open --context context:primary-signature -vv "$DMG"
 
-MOUNT="$(mktemp -d "${TMPDIR:-/tmp}/highlight-desk-mount.XXXXXX")"
+MOUNT="$(mktemp -d "${TMPDIR:-/tmp}/chatclip-mount.XXXXXX")"
 hdiutil attach "$DMG" -nobrowse -mountpoint "$MOUNT" >/dev/null
 spctl -a -t exec -vv "$MOUNT/Chatclip.app"
 hdiutil detach "$MOUNT" >/dev/null

@@ -13,7 +13,7 @@ VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/
 FORMAT="${FORMAT:-dmg}"
 
 [[ -d "$APP" ]] || { echo "App bundle not found: $APP" >&2; exit 1; }
-STAGE="$(mktemp -d "${TMPDIR:-/tmp}/highlight-desk-package.XXXXXX")"
+STAGE="$(mktemp -d "${TMPDIR:-/tmp}/chatclip-package.XXXXXX")"
 trap 'rm -rf "$STAGE"' EXIT
 cp -R "$APP" "$STAGE/"
 ln -s /Applications "$STAGE/Applications"

@@ -37,7 +37,7 @@ const SETTINGS = {
 };
 
 function tempFile(contents = "hello world") {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "highlight-desk-dropbox-"));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "chatclip-dropbox-"));
   const file = path.join(dir, "clip.mp4");
   fs.writeFileSync(file, contents);
   return { dir, file, size: Buffer.byteLength(contents) };

@@ -21,7 +21,7 @@ function response(body, status = 200, headers = {}) {
 }
 
 function tempFile(contents = "hello world") {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "highlight-desk-gdrive-"));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "chatclip-gdrive-"));
   const file = path.join(dir, "clip.mp4");
   fs.writeFileSync(file, contents);
   return { dir, file, size: Buffer.byteLength(contents) };
