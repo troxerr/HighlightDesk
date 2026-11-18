@@ -2,7 +2,7 @@
 
 `.github/workflows/build.yml` builds unsigned artifacts on both Mac architectures:
 
-- `macos-13` → x86_64
+- `macos-15-intel` → x86_64 (`macos-13` was retired by GitHub)
 - `macos-14` → arm64
 
 Each job:
