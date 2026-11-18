@@ -21,6 +21,7 @@ const { parseManifest, planClip } = require("./lib/manifest.js");
 const { readConfig, reframeSettings, storageSettings } = require("./lib/appconfig.js");
 const { createStorageProvider, storageLabel } = require("./lib/storage/index.js");
 const { createJobStore } = require("./lib/jobstore.js");
+const { writeCrashReport } = require("./lib/crashlog.js");
 const { exportClip, writeSidecar, killAll: killExports } = require("./lib/exporter.js");
 const { reframeClip, killAll: killReframes } = require("./lib/reframe.js");
 
@@ -733,7 +734,12 @@ async function runPipeline(job, plan, rawTarget) {
       preset: reframeConfig.preset,
       blur: reframeConfig.blur,
       encoder: reframeConfig.encoder,
-      bitrate: reframeConfig.bitrate
+      bitrate: reframeConfig.bitrate,
+      layout: reframeConfig.layout,
+      camHeightRatio: reframeConfig.camHeightRatio,
+      facecamCorner: reframeConfig.facecamCorner,
+      facecam: reframeConfig.facecam,
+      gameplay: reframeConfig.gameplay
     });
     if (!reframe.ok) {
       metadata.reframed = false;
@@ -1041,6 +1047,7 @@ async function tick() {
       paceHistory.push(windowParticipants);
       if (paceHistory.length > settings.historyLimit) paceHistory.shift();
     }
+    const windowEmotes = topEmotes(emoteCounts);
     viewers.clear();
     reactors.clear();
     emoteCounts.clear();
@@ -1060,6 +1067,7 @@ async function tick() {
       reactionFloor: reactionResult ? reactionResult.reactionFloor : 0,
       trigger: reactionResult ? reactionResult.trigger : false,
       reasons: reactionResult ? reactionResult.reasons : [],
+      topEmotes: windowEmotes,
       pending: Boolean(pending),
       exporting: Boolean(exporting),
       clips: clipCount
@@ -1277,7 +1285,6 @@ process.on("SIGUSR1", () => {
     mediaTime: lastWindow.mediaTime, windowId: lastWindow.id }, { dir: jobStore.stateDir });
   emit("missed-moment", { message: "Marked this moment for review. No extra clip was created." });
 });
-
 // Windows has no SIGUSR1/2, so a host app can send newline-delimited commands
 // on stdin instead (HIGHLIGHT_DESK_COMMANDS=1): "save", "missed", "stop".
 if (process.env.HIGHLIGHT_DESK_COMMANDS === "1") {
@@ -1291,12 +1298,25 @@ if (process.env.HIGHLIGHT_DESK_COMMANDS === "1") {
     if (handler) handler();
   }).on("close", () => { if (!stopping) shutdown(0); });
 }
+
+function recordCrash(kind, error) {
+  const file = writeCrashReport({
+    dir: jobStore.stateDir,
+    kind,
+    error,
+    version: require("./package.json").version,
+    context: { channel: typeof channel === "string" ? channel : "", queued: (() => { try { return jobStore.listQueue().length; } catch { return -1; } })() }
+  });
+  return file;
+}
 process.on("uncaughtException", (error) => {
-  emit("fatal", { message: error.stack || error.message });
+  const file = recordCrash("uncaughtException", error);
+  emit("fatal", { message: (error && (error.stack || error.message)) || String(error), crashReport: file || undefined });
   shutdown(1);
 });
 process.on("unhandledRejection", (error) => {
-  emit("fatal", { message: error && error.stack ? error.stack : String(error) });
+  const file = recordCrash("unhandledRejection", error);
+  emit("fatal", { message: error && error.stack ? error.stack : String(error), crashReport: file || undefined });
   shutdown(1);
 });
 process.stdout.on("error", () => {});

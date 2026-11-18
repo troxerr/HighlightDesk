@@ -125,7 +125,7 @@ static NSString *const kConfigTemplate =
 "  }\n"
 "}\n";
 
-@interface Desk : NSObject <NSApplicationDelegate, NSWindowDelegate, NSTableViewDataSource, NSTableViewDelegate>
+@interface Desk : NSObject <NSApplicationDelegate, NSWindowDelegate, NSMenuDelegate, NSTableViewDataSource, NSTableViewDelegate>
 @property(strong) HDUI *ui;
 @property(strong) NSWindow *window;
 @property(strong) NSTextField *channel;
@@ -215,6 +215,12 @@ static NSString *const kConfigTemplate =
 @property(strong) NSTask *monitorTask;
 @property(strong) NSDictionary *monitorSnapshot;
 @property(strong) NSDictionary *monitorReport;
+@property(strong) NSStatusItem *statusItem;
+@property(strong) NSMenuItem *statusStateItem;
+@property(strong) NSMenuItem *statusToggleItem;
+@property(strong) NSTimer *statusTimer;
+@property(copy) NSString *statusItemSignature;
+@property BOOL suppressPreviewUpdate;
 @end
 
 static NSFont *HDDeskMono(CGFloat size) {
@@ -1136,10 +1142,19 @@ static NSString *HDByteString(unsigned long long bytes) {
   NSArray *queue = queueData ? [NSJSONSerialization JSONObjectWithData:queueData options:0 error:nil] : @[];
   self.queueItems = [queue isKindOfClass:[NSArray class]] ? [queue mutableCopy] : [NSMutableArray array];
   self.queuedCount = self.queueItems.count;
+  NSInteger selectedRow = self.historyTable.selectedRow;
+  NSString *selectedPath = (selectedRow >= 0 && selectedRow < (NSInteger)self.historyItems.count && [self.historyItems[selectedRow][@"localPath"] isKindOfClass:NSString.class]) ? self.historyItems[selectedRow][@"localPath"] : nil;
   self.historyItems = [[self historyRowsFromDisk] mutableCopy];
   NSArray *descriptors = self.historyTable.sortDescriptors;
   if (descriptors.count) [self.historyItems sortUsingDescriptors:descriptors];
+  self.suppressPreviewUpdate = YES;
   [self.historyTable reloadData];
+  if (selectedPath.length) {
+    NSUInteger match = [self.historyItems indexOfObjectPassingTest:^BOOL(NSDictionary *item, NSUInteger idx, BOOL *stop) { return [item[@"localPath"] isEqual:selectedPath]; }];
+    if (match != NSNotFound) [self.historyTable selectRowIndexes:[NSIndexSet indexSetWithIndex:match] byExtendingSelection:NO];
+  }
+  self.suppressPreviewUpdate = NO;
+  [self tableViewSelectionDidChange:[NSNotification notificationWithName:NSTableViewSelectionDidChangeNotification object:self.historyTable]];
   [self.ui setLibraryEmpty:self.historyItems.count == 0];
   [self updateHistoryStatus];
   if (self.ui) {
@@ -1147,10 +1162,30 @@ static NSString *HDByteString(unsigned long long bytes) {
     NSInteger filter = self.ui.clipFilterControl.selectedSegment;
     self.ui.clipSearchField.stringValue = @"";
     self.ui.clipFilterControl.selectedSegment = 0;
-    [self.ui updateRecentClips:[self historyRowsFromDisk]];
+    [self.ui updateRecentClips:[self recentClipCardEntries]];
     self.ui.clipSearchField.stringValue = query;
     self.ui.clipFilterControl.selectedSegment = filter;
   }
+}
+
+// The newest three history rows, enriched with the peak chatter count and top emotes
+// stored in each clip's metadata sidecar, for the Capture page's portrait strip.
+- (NSArray<NSDictionary *> *)recentClipCardEntries {
+  NSArray<NSDictionary *> *rows = [self historyRowsFromDisk];
+  NSMutableArray<NSDictionary *> *result = [NSMutableArray arrayWithCapacity:rows.count];
+  [rows enumerateObjectsUsingBlock:^(NSDictionary *entry, NSUInteger index, BOOL *stop) {
+    if (index >= 3) { [result addObject:entry]; return; }
+    NSString *path = [entry[@"localPath"] isKindOfClass:NSString.class] ? entry[@"localPath"] : @"";
+    NSDictionary *meta = [self metadataForClipPath:path];
+    NSMutableDictionary *copy = [entry mutableCopy];
+    NSNumber *participants = [meta[@"participants"] isKindOfClass:NSNumber.class] ? meta[@"participants"] : nil;
+    NSNumber *messages = [meta[@"messages"] isKindOfClass:NSNumber.class] ? meta[@"messages"] : nil;
+    if (participants.doubleValue > 0) copy[@"peak"] = participants;
+    else if (messages.doubleValue > 0) copy[@"peak"] = messages;
+    if ([meta[@"topEmotes"] isKindOfClass:NSArray.class]) copy[@"topEmotes"] = meta[@"topEmotes"];
+    [result addObject:copy];
+  }];
+  return result;
 }
 
 - (void)showHistory:(id)sender {
@@ -1458,7 +1493,7 @@ static NSString *HDByteString(unsigned long long bytes) {
   dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
     AVURLAsset *asset = [AVURLAsset URLAssetWithURL:[NSURL fileURLWithPath:path] options:nil];
     AVAssetImageGenerator *generator = [[AVAssetImageGenerator alloc] initWithAsset:asset];
-    generator.appliesPreferredTrackTransform = YES; generator.maximumSize = CGSizeMake(160,160);
+    generator.appliesPreferredTrackTransform = YES; generator.maximumSize = CGSizeMake(360,640);
     [generator generateCGImageAsynchronouslyForTime:kCMTimeZero completionHandler:^(CGImageRef cg, CMTime actual, NSError *error) {
       NSImage *image = cg ? [[NSImage alloc] initWithCGImage:cg size:NSZeroSize] : nil;
       NSDictionary *result = image ? @{@"image":image} : @{};
@@ -1504,6 +1539,9 @@ static NSString *HDByteString(unsigned long long bytes) {
 
 - (void)tableViewSelectionDidChange:(NSNotification *)notification {
   self.historyOpenButton.enabled = self.historyTable.selectedRow >= 0;
+  if (self.suppressPreviewUpdate) return;
+  NSInteger row = self.historyTable.selectedRow;
+  [self.ui showClipPreviewForEntry:(row >= 0 && row < (NSInteger)self.historyItems.count) ? self.historyItems[row] : nil];
 }
 
 - (void)openSelectedHistory:(id)sender {
@@ -1679,6 +1717,9 @@ static NSString *HDByteString(unsigned long long bytes) {
       NSString *source = [self.stateDir stringByAppendingPathComponent:name];
       if ([fm fileExistsAtPath:source]) [fm copyItemAtPath:source toPath:[temp stringByAppendingPathComponent:name] error:nil];
     }
+
+    NSString *crashSource = [self.stateDir stringByAppendingPathComponent:@"crashes"];
+    if ([fm fileExistsAtPath:crashSource]) [fm copyItemAtPath:crashSource toPath:[temp stringByAppendingPathComponent:@"crashes"] error:nil];
 
     NSString *log = [[self.logLines componentsJoinedByString:@"\n"] stringByAppendingString:@"\n"];
     [log writeToFile:[temp stringByAppendingPathComponent:@"app.log"] atomically:YES encoding:NSUTF8StringEncoding error:nil];
@@ -1976,6 +2017,8 @@ static NSString *HDByteString(unsigned long long bytes) {
   }
   viewItem.submenu = viewMenu;
   NSApp.mainMenu = menu;
+  // The menu bar companion would leak into headless UI review captures and runs.
+  if (!NSProcessInfo.processInfo.environment[@"HIGHLIGHT_DESK_UI_REVIEW"].length) [self installStatusItem];
 
   [self reloadStorageSettings];
   [self reloadHistoryFromDisk];
@@ -2030,8 +2073,100 @@ static NSString *HDByteString(unsigned long long bytes) {
 
 - (void)navigateToPage:(NSMenuItem *)sender { [self.ui selectPage:(HDPage)sender.tag]; }
 
+// MARK: Menu bar live companion
+
+- (void)installStatusItem {
+  if (self.statusItem) return;
+  NSStatusItem *item = [NSStatusBar.systemStatusBar statusItemWithLength:NSVariableStatusItemLength];
+  NSImage *icon = [HDSymbolImage(HDSymbolRoleCapture, 14, NSFontWeightMedium, @"Highlight Desk") copy];
+  icon.template = YES;
+  item.button.image = icon;
+  item.button.imagePosition = NSImageLeft;
+  item.button.accessibilityLabel = @"Highlight Desk";
+  item.button.toolTip = @"Highlight Desk";
+  NSMenu *menu = [[NSMenu alloc] initWithTitle:@"Highlight Desk"];
+  menu.delegate = self;
+  self.statusStateItem = [menu addItemWithTitle:@"Idle" action:nil keyEquivalent:@""];
+  [menu addItem:[NSMenuItem separatorItem]];
+  NSMenuItem *save = [menu addItemWithTitle:@"Save Highlight" action:@selector(saveHighlight:) keyEquivalent:@"s"];
+  save.keyEquivalentModifierMask = NSEventModifierFlagCommand;
+  save.target = self;
+  NSMenuItem *missed = [menu addItemWithTitle:@"Mark Missed Moment" action:@selector(statusItemMarkMissed:) keyEquivalent:@""];
+  missed.target = self;
+  self.statusToggleItem = [menu addItemWithTitle:@"Start Capture" action:@selector(toggleCapture:) keyEquivalent:@""];
+  self.statusToggleItem.target = self;
+  [menu addItem:[NSMenuItem separatorItem]];
+  NSMenuItem *show = [menu addItemWithTitle:@"Show Highlight Desk" action:@selector(showMainWindow:) keyEquivalent:@""];
+  show.target = self;
+  item.menu = menu;
+  self.statusItem = item;
+  __weak typeof(self) weakSelf = self;
+  self.statusTimer = [NSTimer scheduledTimerWithTimeInterval:1 repeats:YES block:^(NSTimer *timer) { [weakSelf refreshStatusItem]; }];
+  self.statusTimer.tolerance = 0.5;
+  [self refreshStatusItem];
+}
+
+- (void)refreshStatusItem {
+  if (!self.statusItem) return;
+  BOOL live = self.task.running;
+  BOOL scanning = !live && self.vodTask.running;
+  NSInteger clips = self.clipCount;
+  NSString *state = live ? [NSString stringWithFormat:@"● Live · %ld clip%@", (long)clips, clips == 1 ? @"" : @"s"] : (scanning ? @"Finding highlights…" : @"Idle");
+  NSString *signature = [NSString stringWithFormat:@"%@|%d", state, live];
+  if ([signature isEqualToString:self.statusItemSignature]) return;
+  self.statusItemSignature = signature;
+  self.statusStateItem.title = state;
+  self.statusToggleItem.title = live ? @"Stop Capture" : @"Start Capture";
+  if (live) {
+    NSMutableAttributedString *title = [[NSMutableAttributedString alloc] initWithString:@" ● " attributes:@{NSForegroundColorAttributeName:[NSColor systemRedColor], NSFontAttributeName:[NSFont systemFontOfSize:10]}];
+    [title appendAttributedString:[[NSAttributedString alloc] initWithString:[NSString stringWithFormat:@"Live · %ld", (long)clips] attributes:@{NSFontAttributeName:[NSFont monospacedDigitSystemFontOfSize:12 weight:NSFontWeightMedium]}]];
+    self.statusItem.button.attributedTitle = title;
+  } else {
+    self.statusItem.button.attributedTitle = [[NSAttributedString alloc] initWithString:@""];
+  }
+  self.statusItem.button.accessibilityValue = state;
+}
+
+- (void)menuNeedsUpdate:(NSMenu *)menu {
+  self.statusItemSignature = nil;
+  [self refreshStatusItem];
+}
+
+- (void)statusItemMarkMissed:(id)sender {
+  [self markMissedMoment:sender];
+  self.status.stringValue = @"Missed moment marked for review. Capture continues.";
+}
+
+- (void)showMainWindow:(id)sender {
+  if (self.window.isMiniaturized) [self.window deminiaturize:nil];
+  [self.window makeKeyAndOrderFront:nil];
+  [NSApp activateIgnoringOtherApps:YES];
+}
+
+// MARK: Reframe layout
+
+- (void)reframeSettingsChanged:(NSDictionary *)settings {
+  NSMutableDictionary *config = [self loadConfig];
+  if (!config) return;
+  NSMutableDictionary *reframe = [config[@"reframe"] isKindOfClass:NSMutableDictionary.class] ? config[@"reframe"] : [NSMutableDictionary dictionary];
+  NSString *layout = [settings[@"layout"] isEqual:@"split"] ? @"split" : @"blur";
+  double ratio = MAX(0.20, MIN(0.50, round([settings[@"camHeightRatio"] doubleValue] * 100) / 100));
+  NSString *corner = [@[@"top-left", @"top-right", @"bottom-left", @"bottom-right"] containsObject:settings[@"facecamCorner"]] ? settings[@"facecamCorner"] : @"bottom-left";
+  reframe[@"layout"] = layout;
+  reframe[@"camHeightRatio"] = @(ratio);
+  reframe[@"facecamCorner"] = corner;
+  config[@"reframe"] = reframe;
+  if (![self writeConfig:config]) {
+    [self alert:@"Could not save the layout." info:@"The configuration file could not be written."];
+    return;
+  }
+  [self logUsageEvent:@"reframe-layout" details:@{@"layout": layout, @"camHeightRatio": @(ratio), @"facecamCorner": corner}];
+}
+
 - (BOOL)validateMenuItem:(NSMenuItem *)item {
   if (item.action == @selector(saveHighlight:)) return self.saveButton.enabled;
+  if (item.action == @selector(statusItemMarkMissed:)) return self.task.running && self.monitorSnapshot[@"lastWindow"] != nil;
+  if (item.action == @selector(toggleCapture:)) return self.toggle.enabled && !(self.vodTask.running && !self.task.running);
   if (item.action == @selector(navigateToPage:)) {
     item.state = self.ui.selectedPage == item.tag ? NSControlStateValueOn : NSControlStateValueOff;
   }
@@ -2118,7 +2253,24 @@ static NSString *HDByteString(unsigned long long bytes) {
     [self.ui performSelector:@selector(vodOptionsToggled:) withObject:nil];
   }
   [self.ui setSessionState:HDSessionStateReady status:@""];
+  // Synthetic data so each new surface is visible in review captures. UI only: no recorder, no config writes.
+  if (!vodReview && page == HDPageCapture) {
+    [self.ui resetChatPulse];
+    double series[] = {6,7,5,8,9,7,6,8,10,9,7,8,11,9,8,12,10,9,14,31,36,18,12,10,9,11,8,9,10,13,12,38,44,22,14,11};
+    for (NSUInteger i = 0; i < sizeof(series) / sizeof(series[0]); i++) {
+      BOOL fired = series[i] > 30 && (i == 20 || i == 32);
+      [self.ui recordChatSample:@{@"participants": @(series[i]), @"threshold": @(24), @"median": @(9), @"reactions": @(series[i] / 2), @"trigger": @(fired), @"at": [NSDate dateWithTimeIntervalSinceNow:-5.0 * (36 - (double)i)], @"topEmotes": fired ? @[@{@"name": @"KEKW", @"count": @14}, @{@"name": @"PogChamp", @"count": @9}] : @[]}];
+    }
+    [self.ui recordChatTrigger:@{@"participants": @44, @"topEmotes": @[@{@"name": @"KEKW", @"count": @14}, @{@"name": @"PogChamp", @"count": @9}]}];
+  }
+  if (!vodReview && page == HDPageClips && self.historyItems.count) {
+    [self.historyTable selectRowIndexes:[NSIndexSet indexSetWithIndex:0] byExtendingSelection:NO];
+  }
+  if (!vodReview && page == HDPageStorage) {
+    [self.ui setReframeLayout:dark ? @"split" : @"blur" camHeightRatio:0.35 facecamCorner:@"top-right"];
+  }
   [self.window makeFirstResponder:nil];
+  if (!vodReview && page == HDPageCapture) [self.ui setSessionState:HDSessionStateLive status:@"Chat connected. Highlights are being captured."];
   [self.window makeKeyAndOrderFront:nil]; [NSApp activateIgnoringOtherApps:YES];
   dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.2*NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
     [self.window.contentView layoutSubtreeIfNeeded]; [self.window displayIfNeeded];
@@ -2345,6 +2497,7 @@ static NSString *HDByteString(unsigned long long bytes) {
     }
     NSInteger participants = [event[@"participants"] integerValue];
     NSInteger reactions = [event[@"reactions"] integerValue];
+    if (event[@"participants"] && !self.vodEvents) [self.ui recordChatSample:event];
     if (joined || participants > 0 || reactions > 0) {
       [self logUsageEvent:@"chat-sample" details:@{
         @"joined": @(joined), @"recording": @(recording),
@@ -2409,6 +2562,7 @@ static NSString *HDByteString(unsigned long long bytes) {
     NSDictionary *metadata = [event[@"metadata"] isKindOfClass:[NSDictionary class]] ? event[@"metadata"] : nil;
     NSString *reason = [metadata[@"reason"] isKindOfClass:[NSString class]] ? metadata[@"reason"] : @"highlight";
     NSString *path = [event[@"path"] isKindOfClass:[NSString class]] ? event[@"path"] : nil;
+    if (!self.vodEvents) [self.ui recordChatTrigger:@{@"participants": metadata[@"participants"] ?: @0, @"topEmotes": metadata[@"topEmotes"] ?: @[]}];
     NSString *provider = [event[@"provider"] isKindOfClass:[NSString class]] ? event[@"provider"] : self.storageMode;
     NSString *remotePath = [event[@"remotePath"] isKindOfClass:[NSString class]] ? event[@"remotePath"] : nil;
     if ([event[@"webLink"] isKindOfClass:[NSString class]]) self.lastRemoteURL = event[@"webLink"];
@@ -2472,6 +2626,7 @@ static NSString *HDByteString(unsigned long long bytes) {
       : [NSString stringWithFormat:@"Saved clip %ld of %ld", (long)self.vodSaved, (long)total];
   }
   [self.ui updateSummaryWithClips:self.clipCount queue:self.queuedCount storage:self.storageLabel trial:self.trialDays];
+  [self refreshStatusItem];
 }
 
 - (void)clipSearchChanged:(id)sender {
@@ -2936,6 +3091,11 @@ static NSString *HDByteString(unsigned long long bytes) {
   self.storageKeepLocalCheckbox.state = ([storage[@"keepLocalCopy"] boolValue] || (storage[@"deleteAfterUpload"] && ![storage[@"deleteAfterUpload"] boolValue])) ? NSControlStateValueOn : NSControlStateValueOff;
   self.storageKeepRawCheckbox.state = [storage[@"keepRaw"] boolValue] ? NSControlStateValueOn : NSControlStateValueOff;
   [self updateStorageStatus];
+  NSDictionary *reframe = [config[@"reframe"] isKindOfClass:[NSDictionary class]] ? config[@"reframe"] : nil;
+  NSNumber *ratio = [reframe[@"camHeightRatio"] isKindOfClass:[NSNumber class]] ? reframe[@"camHeightRatio"] : @0.35;
+  [self.ui setReframeLayout:[reframe[@"layout"] isKindOfClass:[NSString class]] ? reframe[@"layout"] : @"blur"
+              camHeightRatio:ratio.doubleValue
+               facecamCorner:[reframe[@"facecamCorner"] isKindOfClass:[NSString class]] ? reframe[@"facecamCorner"] : @"bottom-left"];
   if (self.ui) { [self.ui syncStorageCards]; self.ui.storageSaveButton.enabled = NO; }
 }
 
@@ -3286,6 +3446,8 @@ static NSString *HDByteString(unsigned long long bytes) {
 
 - (void)applicationWillTerminate:(NSNotification *)notification {
   self.quitting = YES;
+  [self.statusTimer invalidate];
+  if (self.statusItem) [NSStatusBar.systemStatusBar removeStatusItem:self.statusItem];
   if (self.task.running) [self.task terminate];
   if (self.vodTask.running) [self.vodTask terminate];
 }

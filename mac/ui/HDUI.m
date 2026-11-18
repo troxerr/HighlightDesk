@@ -1,6 +1,8 @@
 #import "HDUI.h"
 #import "HDSymbols.h"
 #import <QuartzCore/QuartzCore.h>
+#import <AVKit/AVKit.h>
+#import <AVFoundation/AVFoundation.h>
 
 static NSColor *HDHex(NSString *hex) {
   unsigned int v = 0;
@@ -67,6 +69,10 @@ static NSColor *HDResolved(NSColor *color, NSAppearance *appearance) {
   return resolved;
 }
 
+static NSColor *HDSpikeViolet(NSAppearance *appearance) {
+  return HDDark(appearance) ? HDHex(@"#9A74E8") : HDHex(@"#7042C1");
+}
+
 static NSColor *HDGood(void) { return HDHex(@"#10B981"); }
 static NSColor *HDWarn(void) { return HDHex(@"#F59E0B"); }
 static NSColor *HDLive(void) { return HDHex(@"#EF4444"); }
@@ -116,12 +122,14 @@ static NSTextField *HDCaption(NSString *text) {
   self.needsDisplay = YES;
 }
 - (void)drawRect:(NSRect)dirtyRect {
+  BOOL dark = HDDark(self.effectiveAppearance);
   NSColor *fill = HDAccent();
-  if (!self.enabled) fill = NSColor.quaternaryLabelColor;
-  else if (_hover || self.highlighted) fill = [fill blendedColorWithFraction:0.12 ofColor:NSColor.blackColor];
+  if (!self.enabled) fill = [HDAccent() colorWithAlphaComponent:dark ? 0.32 : 0.38];
+  else if (self.highlighted) fill = [fill blendedColorWithFraction:0.22 ofColor:NSColor.blackColor];
+  else if (_hover) fill = dark ? [fill blendedColorWithFraction:0.16 ofColor:NSColor.whiteColor] : [fill blendedColorWithFraction:0.12 ofColor:NSColor.blackColor];
   [fill setFill];
   [[NSBezierPath bezierPathWithRoundedRect:NSInsetRect(self.bounds, 0, 1) xRadius:7 yRadius:7] fill];
-  NSDictionary *attributes = @{NSFontAttributeName:self.font, NSForegroundColorAttributeName:self.enabled ? NSColor.whiteColor : NSColor.disabledControlTextColor};
+  NSDictionary *attributes = @{NSFontAttributeName:self.font, NSForegroundColorAttributeName:self.enabled ? NSColor.whiteColor : [NSColor colorWithWhite:1 alpha:0.7]};
   NSSize size = [self.title sizeWithAttributes:attributes];
   CGFloat iconSize = self.image ? 13 : 0;
   CGFloat gap = self.image ? 7 : 0;
@@ -130,7 +138,7 @@ static NSTextField *HDCaption(NSString *text) {
     NSImage *source = self.image;
     NSImage *icon = [NSImage imageWithSize:NSMakeSize(iconSize, iconSize) flipped:NO drawingHandler:^BOOL(NSRect rect) {
       [source drawInRect:rect];
-      [(self.enabled ? NSColor.whiteColor : NSColor.disabledControlTextColor) setFill];
+      [(self.enabled ? NSColor.whiteColor : [NSColor colorWithWhite:1 alpha:0.7]) setFill];
       NSRectFillUsingOperation(rect, NSCompositingOperationSourceIn);
       return YES;
     }];
@@ -138,7 +146,7 @@ static NSTextField *HDCaption(NSString *text) {
   }
   [self.title drawAtPoint:NSMakePoint(left + iconSize + gap, round((self.bounds.size.height-size.height)/2)) withAttributes:attributes];
   if (self.window.firstResponder == self && NSApp.isActive) {
-    [NSColor.keyboardFocusIndicatorColor setStroke];
+    [(dark ? HDHex(@"#CCB5FF") : HDHex(@"#4B2C8A")) setStroke];
     NSBezierPath *focus = [NSBezierPath bezierPathWithRoundedRect:NSInsetRect(self.bounds, 1, 2) xRadius:6 yRadius:6];
     focus.lineWidth = 2; [focus stroke];
   }
@@ -190,18 +198,6 @@ static NSButton *HDButton(NSString *title, id target, SEL action, BOOL primary) 
 - (void)updateLayer {
   [self.effectiveAppearance performAsCurrentDrawingAppearance:^{
     self.layer.backgroundColor = HDInk().CGColor;
-  }];
-}
-- (void)viewDidChangeEffectiveAppearance { [super viewDidChangeEffectiveAppearance]; self.needsDisplay = YES; }
-@end
-
-@interface HDSurfaceView : NSView
-@end
-@implementation HDSurfaceView
-- (BOOL)wantsUpdateLayer { return YES; }
-- (void)updateLayer {
-  [self.effectiveAppearance performAsCurrentDrawingAppearance:^{
-    self.layer.backgroundColor = HDSurface().CGColor;
   }];
 }
 - (void)viewDidChangeEffectiveAppearance { [super viewDidChangeEffectiveAppearance]; self.needsDisplay = YES; }
@@ -302,6 +298,8 @@ static NSButton *HDButton(NSString *title, id target, SEL action, BOOL primary) 
   if (_selected) {
     [HDSelection() setFill];
     [[NSBezierPath bezierPathWithRoundedRect:self.bounds xRadius:7 yRadius:7] fill];
+    [HDSpikeViolet(self.effectiveAppearance) setFill];
+    [[NSBezierPath bezierPathWithRoundedRect:NSMakeRect(0, round(NSHeight(self.bounds) / 2) - 8, 3, 16) xRadius:1.5 yRadius:1.5] fill];
   }
   [super drawRect:dirtyRect];
 }
@@ -309,6 +307,424 @@ static NSButton *HDButton(NSString *title, id target, SEL action, BOOL primary) 
   [super viewDidChangeEffectiveAppearance];
   [self setSelectedAppearance:_selected];
 }
+@end
+
+// MARK: - Studio views
+
+static void HDStyleSegmented(NSSegmentedControl *control) {
+  control.selectedSegmentBezelColor = HDAccent();
+}
+
+// Draws a capsule with centered text and returns its width.
+static CGFloat HDDrawPill(NSString *text, NSPoint origin, NSFont *font, NSColor *fill, NSColor *ink, NSColor *dot) {
+  NSDictionary *attributes = @{NSFontAttributeName:font, NSForegroundColorAttributeName:ink};
+  NSSize size = [text sizeWithAttributes:attributes];
+  CGFloat dotSpace = dot ? 11 : 0;
+  CGFloat width = ceil(size.width) + 14 + dotSpace;
+  CGFloat height = ceil(size.height) + 4;
+  NSRect rect = NSMakeRect(origin.x, origin.y, width, height);
+  [fill setFill];
+  [[NSBezierPath bezierPathWithRoundedRect:rect xRadius:height / 2 yRadius:height / 2] fill];
+  CGFloat textX = origin.x + 7;
+  if (dot) {
+    [dot setFill];
+    [[NSBezierPath bezierPathWithOvalInRect:NSMakeRect(textX, origin.y + (height - 6) / 2, 6, 6)] fill];
+    textX += dotSpace;
+  }
+  [text drawAtPoint:NSMakePoint(textX, origin.y + 2) withAttributes:attributes];
+  return width;
+}
+
+static const NSUInteger kHDPulseMaxBars = 72;
+static const NSTimeInterval kHDPulseTriggerLife = 25;
+
+@implementation HDChatPulseView {
+  NSMutableArray<NSDictionary *> *_samples;
+  NSDictionary *_trigger;
+  NSDate *_triggerAt;
+  NSDate *_lastAt;
+}
+- (instancetype)initWithFrame:(NSRect)frameRect {
+  self = [super initWithFrame:frameRect];
+  if (self) {
+    _samples = [NSMutableArray array];
+    self.translatesAutoresizingMaskIntoConstraints = NO;
+    self.accessibilityElement = YES;
+    self.accessibilityRole = NSAccessibilityImageRole;
+    self.accessibilityLabel = @"Live chat pulse";
+    self.accessibilityValue = @"Waiting for chat activity";
+    [self.heightAnchor constraintEqualToConstant:88].active = YES;
+  }
+  return self;
+}
+- (void)reset {
+  [_samples removeAllObjects];
+  _trigger = nil; _triggerAt = nil; _lastAt = nil;
+  self.accessibilityValue = @"Waiting for chat activity";
+  self.needsDisplay = YES;
+}
+- (void)addSample:(NSDictionary *)sample {
+  NSDate *now = [sample[@"at"] isKindOfClass:NSDate.class] ? sample[@"at"] : [NSDate date];
+  NSMutableDictionary *entry = [sample mutableCopy];
+  entry[@"at"] = now;
+  // Status events arrive once per sampling window; coalesce anything faster than 1s.
+  if (_samples.count && _lastAt && [now timeIntervalSinceDate:_lastAt] < 1.0) [_samples removeLastObject];
+  [_samples addObject:entry];
+  _lastAt = now;
+  while (_samples.count > kHDPulseMaxBars) [_samples removeObjectAtIndex:0];
+  if ([entry[@"trigger"] boolValue]) {
+    [self noteTrigger:@{@"participants": entry[@"participants"] ?: @0, @"topEmotes": entry[@"topEmotes"] ?: @[]}];
+  }
+  self.accessibilityValue = [NSString stringWithFormat:@"%ld chatters, threshold %.0f%@", (long)[entry[@"participants"] integerValue], [entry[@"threshold"] doubleValue], [entry[@"trigger"] boolValue] ? @", spike detected" : @""];
+  self.needsDisplay = YES;
+}
+- (void)noteTrigger:(NSDictionary *)info {
+  NSArray *emotes = [info[@"topEmotes"] isKindOfClass:NSArray.class] ? info[@"topEmotes"] : @[];
+  NSNumber *participants = [info[@"participants"] isKindOfClass:NSNumber.class] ? info[@"participants"] : nil;
+  BOOL fresh = _triggerAt && [[NSDate date] timeIntervalSinceDate:_triggerAt] < 10;
+  _trigger = @{
+    @"participants": participants ?: (fresh ? _trigger[@"participants"] : nil) ?: @0,
+    @"emotes": emotes.count ? emotes : (fresh ? _trigger[@"emotes"] : nil) ?: @[]
+  };
+  _triggerAt = [NSDate date];
+  self.needsDisplay = YES;
+}
+- (void)viewDidChangeEffectiveAppearance { [super viewDidChangeEffectiveAppearance]; self.needsDisplay = YES; }
+- (void)drawRect:(NSRect)dirtyRect {
+  NSAppearance *appearance = self.effectiveAppearance;
+  NSRect bounds = self.bounds;
+  [HDInk() setFill];
+  [[NSBezierPath bezierPathWithRoundedRect:bounds xRadius:8 yRadius:8] fill];
+  [HDHairline() setStroke];
+  NSBezierPath *frame = [NSBezierPath bezierPathWithRoundedRect:NSInsetRect(bounds, 0.5, 0.5) xRadius:8 yRadius:8];
+  frame.lineWidth = 1; [frame stroke];
+
+  NSFont *caption = [NSFont systemFontOfSize:10.5 weight:NSFontWeightSemibold];
+  NSFont *numbers = [NSFont monospacedDigitSystemFontOfSize:10.5 weight:NSFontWeightRegular];
+  CGFloat headerY = NSMaxY(bounds) - 19;
+  NSString *title = @"CHAT PULSE";
+  NSDictionary *titleAttributes = @{NSFontAttributeName:caption, NSForegroundColorAttributeName:HDMuted(), NSKernAttributeName:@0.6};
+  [title drawAtPoint:NSMakePoint(10, headerY) withAttributes:titleAttributes];
+  CGFloat titleRight = 10 + [title sizeWithAttributes:titleAttributes].width;
+
+  NSDictionary *latest = _samples.lastObject;
+  double threshold = [latest[@"threshold"] doubleValue];
+  double median = [latest[@"median"] doubleValue];
+  CGFloat rightEdge = NSMaxX(bounds) - 10;
+  if (latest) {
+    NSString *summary = [NSString stringWithFormat:@"%ld chatters · median %.0f · threshold %.0f", (long)[latest[@"participants"] integerValue], median, threshold];
+    NSDictionary *attributes = @{NSFontAttributeName:numbers, NSForegroundColorAttributeName:HDMuted()};
+    CGFloat width = [summary sizeWithAttributes:attributes].width;
+    rightEdge = NSMaxX(bounds) - 10 - width;
+    [summary drawAtPoint:NSMakePoint(rightEdge, headerY) withAttributes:attributes];
+  }
+
+  // Compact trigger pills: what chat did when the clip fired.
+  if (_trigger && _triggerAt && [[NSDate date] timeIntervalSinceDate:_triggerAt] < kHDPulseTriggerLife) {
+    NSFont *pillFont = [NSFont systemFontOfSize:10 weight:NSFontWeightSemibold];
+    CGFloat x = titleRight + 12;
+    CGFloat y = headerY - 2;
+    NSString *chatters = [NSString stringWithFormat:@"Clip · %ld chatters", (long)[_trigger[@"participants"] integerValue]];
+    CGFloat w = HDDrawPill(chatters, NSMakePoint(x, y), pillFont, HDSelection(), HDAccentText(), HDLive());
+    x += w + 5;
+    NSUInteger shown = 0;
+    for (NSDictionary *emote in _trigger[@"emotes"]) {
+      if (![emote isKindOfClass:NSDictionary.class] || shown >= 2) break;
+      NSString *text = [NSString stringWithFormat:@"%@ ×%ld", emote[@"name"] ?: @"emote", (long)[emote[@"count"] integerValue]];
+      CGFloat estimate = [text sizeWithAttributes:@{NSFontAttributeName:pillFont}].width + 18;
+      if (x + estimate > rightEdge - 10) break;
+      w = HDDrawPill(text, NSMakePoint(x, y), pillFont, HDSelection(), HDAccentText(), nil);
+      x += w + 5; shown++;
+    }
+  }
+
+  NSRect plot = NSMakeRect(10, 9, NSWidth(bounds) - 20, NSHeight(bounds) - 34);
+  [NSGraphicsContext saveGraphicsState];
+  [NSBezierPath clipRect:NSInsetRect(plot, -2, -2)];
+  if (!_samples.count) {
+    [HDHairline() setStroke];
+    NSBezierPath *base = [NSBezierPath bezierPath];
+    [base moveToPoint:NSMakePoint(NSMinX(plot), NSMinY(plot) + 1)]; [base lineToPoint:NSMakePoint(NSMaxX(plot), NSMinY(plot) + 1)];
+    CGFloat dash[2] = {3, 3}; [base setLineDash:dash count:2 phase:0]; base.lineWidth = 1; [base stroke];
+    NSString *empty = @"Waiting for chat activity…";
+    NSDictionary *attributes = @{NSFontAttributeName:[NSFont systemFontOfSize:11], NSForegroundColorAttributeName:HDMuted()};
+    NSSize size = [empty sizeWithAttributes:attributes];
+    [empty drawAtPoint:NSMakePoint(NSMidX(plot) - size.width / 2, NSMidY(plot) - size.height / 2 + 2) withAttributes:attributes];
+    [NSGraphicsContext restoreGraphicsState];
+    return;
+  }
+  double peak = 4;
+  for (NSDictionary *sample in _samples) peak = MAX(peak, [sample[@"participants"] doubleValue]);
+  double yMax = MAX(peak, threshold * 1.25);
+  CGFloat slot = NSWidth(plot) / kHDPulseMaxBars;
+  CGFloat barWidth = MAX(2, slot - 1.5);
+  NSColor *quiet = [(HDDark(appearance) ? HDHex(@"#CCB5FF") : HDAccent()) colorWithAlphaComponent:0.34];
+  NSColor *spike = HDSpikeViolet(appearance);
+  NSUInteger count = _samples.count;
+  for (NSUInteger i = 0; i < count; i++) {
+    NSDictionary *sample = _samples[i];
+    double participants = [sample[@"participants"] doubleValue];
+    double sampleThreshold = [sample[@"threshold"] doubleValue];
+    CGFloat height = participants > 0 ? MAX(2, participants / yMax * NSHeight(plot)) : 1;
+    CGFloat x = NSMaxX(plot) - (count - i) * slot + (slot - barWidth) / 2;
+    BOOL fired = [sample[@"trigger"] boolValue];
+    [(fired ? HDLive() : (sampleThreshold > 0 && participants >= sampleThreshold ? spike : quiet)) setFill];
+    [[NSBezierPath bezierPathWithRoundedRect:NSMakeRect(x, NSMinY(plot), barWidth, height) xRadius:1.5 yRadius:1.5] fill];
+  }
+  if (median > 0) {
+    CGFloat y = NSMinY(plot) + median / yMax * NSHeight(plot);
+    [[HDMuted() colorWithAlphaComponent:0.4] setStroke];
+    NSBezierPath *line = [NSBezierPath bezierPath];
+    [line moveToPoint:NSMakePoint(NSMinX(plot), y)]; [line lineToPoint:NSMakePoint(NSMaxX(plot), y)];
+    line.lineWidth = 0.75; [line stroke];
+  }
+  if (threshold > 0) {
+    CGFloat y = round(NSMinY(plot) + threshold / yMax * NSHeight(plot)) + 0.5;
+    [HDAccentText() setStroke];
+    NSBezierPath *line = [NSBezierPath bezierPath];
+    [line moveToPoint:NSMakePoint(NSMinX(plot), y)]; [line lineToPoint:NSMakePoint(NSMaxX(plot), y)];
+    CGFloat dash[2] = {5, 3}; [line setLineDash:dash count:2 phase:0];
+    line.lineWidth = 1.25; [line stroke];
+  }
+  [NSGraphicsContext restoreGraphicsState];
+}
+@end
+
+static const CGFloat kHDFacecamRects[4][4] = { // x, y(from top), w, h — mirrors lib/reframe.js FACECAM_CORNERS
+  {0.015, 0.02, 0.25, 0.28}, {0.735, 0.02, 0.25, 0.28}, {0.015, 0.70, 0.25, 0.28}, {0.735, 0.70, 0.25, 0.28}
+};
+static NSArray<NSString *> *HDCornerNames(void) { return @[@"top-left", @"top-right", @"bottom-left", @"bottom-right"]; }
+
+static void HDDrawFakeStream(NSRect rect, NSAppearance *appearance) {
+  NSGradient *gradient = [[NSGradient alloc] initWithStartingColor:HDDark(appearance) ? HDHex(@"#2C2540") : HDHex(@"#5A4A86")
+                                                       endingColor:HDDark(appearance) ? HDHex(@"#1A1626") : HDHex(@"#33284F")];
+  [gradient drawInRect:rect angle:-35];
+  [[NSColor colorWithWhite:1 alpha:0.06] setStroke];
+  NSBezierPath *grid = [NSBezierPath bezierPath];
+  for (NSInteger i = 1; i < 4; i++) {
+    CGFloat x = NSMinX(rect) + NSWidth(rect) * i / 4.0;
+    [grid moveToPoint:NSMakePoint(x, NSMinY(rect))]; [grid lineToPoint:NSMakePoint(x, NSMaxY(rect))];
+  }
+  grid.lineWidth = 0.5; [grid stroke];
+}
+
+static void HDDrawPerson(NSRect rect, NSColor *color) {
+  [NSGraphicsContext saveGraphicsState];
+  [NSBezierPath clipRect:rect];
+  [color setFill];
+  CGFloat side = MIN(NSWidth(rect), NSHeight(rect));
+  CGFloat head = side * 0.34;
+  [[NSBezierPath bezierPathWithOvalInRect:NSMakeRect(NSMidX(rect) - head / 2, NSMidY(rect) - head * 0.05, head, head)] fill];
+  CGFloat shoulderW = side * 0.78, shoulderH = side * 0.48;
+  [[NSBezierPath bezierPathWithRoundedRect:NSMakeRect(NSMidX(rect) - shoulderW / 2, NSMinY(rect) - shoulderH * 0.25, shoulderW, shoulderH) xRadius:shoulderW / 2 yRadius:shoulderH / 2] fill];
+  [NSGraphicsContext restoreGraphicsState];
+}
+
+@implementation HDLayoutPreviewView {
+  NSRect _sourceRect;
+}
+- (instancetype)initWithFrame:(NSRect)frameRect {
+  self = [super initWithFrame:frameRect];
+  if (self) {
+    _layout = @"blur"; _camHeightRatio = 0.35; _facecamCorner = @"bottom-left";
+    self.translatesAutoresizingMaskIntoConstraints = NO;
+    self.accessibilityElement = YES;
+    self.accessibilityRole = NSAccessibilityImageRole;
+    self.accessibilityLabel = @"Vertical layout preview";
+    [self refreshAccessibility];
+  }
+  return self;
+}
+- (void)refreshAccessibility {
+  self.accessibilityValue = [self.layout isEqualToString:@"split"]
+    ? [NSString stringWithFormat:@"Split: facecam from the %@ corner on top, %.0f percent of the height, gameplay below", [self.facecamCorner stringByReplacingOccurrencesOfString:@"-" withString:@" "], self.camHeightRatio * 100]
+    : @"Blur fill: the full stream centered over a blurred copy of itself";
+  self.needsDisplay = YES;
+}
+- (void)setLayout:(NSString *)layout { _layout = [layout isEqualToString:@"split"] ? @"split" : @"blur"; [self refreshAccessibility]; }
+- (void)setCamHeightRatio:(double)ratio { _camHeightRatio = MAX(0.2, MIN(0.5, ratio)); [self refreshAccessibility]; }
+- (void)setFacecamCorner:(NSString *)corner { _facecamCorner = [HDCornerNames() containsObject:corner] ? [corner copy] : @"bottom-left"; [self refreshAccessibility]; }
+- (void)viewDidChangeEffectiveAppearance { [super viewDidChangeEffectiveAppearance]; self.needsDisplay = YES; }
+- (BOOL)acceptsFirstMouse:(NSEvent *)event { return YES; }
+- (void)mouseDown:(NSEvent *)event {
+  NSPoint point = [self convertPoint:event.locationInWindow fromView:nil];
+  if (![self.layout isEqualToString:@"split"] || !NSPointInRect(point, _sourceRect)) return;
+  BOOL right = (point.x - NSMinX(_sourceRect)) > NSWidth(_sourceRect) / 2;
+  BOOL top = (point.y - NSMinY(_sourceRect)) > NSHeight(_sourceRect) / 2;
+  NSString *corner = top ? (right ? @"top-right" : @"top-left") : (right ? @"bottom-right" : @"bottom-left");
+  self.facecamCorner = corner;
+  if (self.cornerPicked) self.cornerPicked(corner);
+}
+- (void)drawRect:(NSRect)dirtyRect {
+  NSAppearance *appearance = self.effectiveAppearance;
+  NSRect bounds = self.bounds;
+  BOOL split = [self.layout isEqualToString:@"split"];
+  NSFont *label = [NSFont systemFontOfSize:10.5 weight:NSFontWeightMedium];
+  NSDictionary *labelAttributes = @{NSFontAttributeName:label, NSForegroundColorAttributeName:HDMuted()};
+
+  CGFloat labelBand = 22;
+  CGFloat outH = NSHeight(bounds) - labelBand - 4;
+  CGFloat outW = round(outH * 9.0 / 16.0);
+  CGFloat srcW = MIN(NSWidth(bounds) - outW - 76, 232);
+  CGFloat srcH = round(srcW * 9.0 / 16.0);
+  CGFloat total = srcW + 56 + outW;
+  CGFloat originX = MAX(0, round((NSWidth(bounds) - total) / 2));
+  _sourceRect = NSMakeRect(originX, labelBand + 4 + round((outH - srcH) / 2), srcW, srcH);
+  NSRect outRect = NSMakeRect(NSMaxX(_sourceRect) + 56, labelBand + 4, outW, outH);
+
+  // Source 16:9 frame.
+  NSBezierPath *sourcePath = [NSBezierPath bezierPathWithRoundedRect:_sourceRect xRadius:6 yRadius:6];
+  [NSGraphicsContext saveGraphicsState];
+  [sourcePath addClip];
+  HDDrawFakeStream(_sourceRect, appearance);
+  if (split) {
+    NSArray *names = HDCornerNames();
+    NSUInteger selected = [names indexOfObject:self.facecamCorner];
+    if (selected == NSNotFound) selected = 2;
+    for (NSUInteger i = 0; i < 4; i++) {
+      NSRect rect = NSMakeRect(NSMinX(_sourceRect) + kHDFacecamRects[i][0] * srcW,
+                               NSMaxY(_sourceRect) - (kHDFacecamRects[i][1] + kHDFacecamRects[i][3]) * srcH,
+                               kHDFacecamRects[i][2] * srcW, kHDFacecamRects[i][3] * srcH);
+      NSBezierPath *path = [NSBezierPath bezierPathWithRoundedRect:rect xRadius:4 yRadius:4];
+      if (i == selected) {
+        [[HDHex(@"#CCB5FF") colorWithAlphaComponent:0.28] setFill]; [path fill];
+        HDDrawPerson(rect, [HDHex(@"#EEE6FA") colorWithAlphaComponent:0.9]);
+        [HDHex(@"#CCB5FF") setStroke]; path.lineWidth = 2; [path stroke];
+      } else {
+        [[NSColor colorWithWhite:1 alpha:0.35] setStroke];
+        CGFloat dash[2] = {2, 2}; [path setLineDash:dash count:2 phase:0]; path.lineWidth = 1; [path stroke];
+      }
+    }
+  }
+  [NSGraphicsContext restoreGraphicsState];
+  [HDHairline() setStroke]; sourcePath.lineWidth = 1; [sourcePath stroke];
+
+  // Arrow.
+  NSBezierPath *arrow = [NSBezierPath bezierPath];
+  CGFloat ax = NSMaxX(_sourceRect) + 14, ay = NSMidY(outRect);
+  [arrow moveToPoint:NSMakePoint(ax, ay)]; [arrow lineToPoint:NSMakePoint(ax + 26, ay)];
+  [arrow moveToPoint:NSMakePoint(ax + 20, ay + 5)]; [arrow lineToPoint:NSMakePoint(ax + 27, ay)]; [arrow lineToPoint:NSMakePoint(ax + 20, ay - 5)];
+  arrow.lineWidth = 1.5; arrow.lineCapStyle = NSLineCapStyleRound; arrow.lineJoinStyle = NSLineJoinStyleRound;
+  [HDAccentText() setStroke]; [arrow stroke];
+
+  // Output 9:16 frame.
+  NSBezierPath *outPath = [NSBezierPath bezierPathWithRoundedRect:outRect xRadius:8 yRadius:8];
+  [NSGraphicsContext saveGraphicsState];
+  [outPath addClip];
+  if (split) {
+    CGFloat camH = round(outH * self.camHeightRatio);
+    NSRect camRect = NSMakeRect(NSMinX(outRect), NSMaxY(outRect) - camH, outW, camH);
+    NSRect gameRect = NSMakeRect(NSMinX(outRect), NSMinY(outRect), outW, outH - camH);
+    HDDrawFakeStream(gameRect, appearance);
+    NSGradient *camGradient = [[NSGradient alloc] initWithStartingColor:HDHex(@"#7042C1") endingColor:HDHex(@"#4B2C8A")];
+    [camGradient drawInRect:camRect angle:-60];
+    HDDrawPerson(camRect, [HDHex(@"#EEE6FA") colorWithAlphaComponent:0.92]);
+    [[NSColor colorWithWhite:1 alpha:0.5] setFill];
+    NSRectFill(NSMakeRect(NSMinX(outRect), NSMinY(camRect) - 0.5, outW, 1));
+    NSDictionary *tag = @{NSFontAttributeName:[NSFont systemFontOfSize:9.5 weight:NSFontWeightSemibold], NSForegroundColorAttributeName:NSColor.whiteColor};
+    [[NSString stringWithFormat:@"Facecam %.0f%%", self.camHeightRatio * 100] drawAtPoint:NSMakePoint(NSMinX(outRect) + 7, NSMaxY(outRect) - 16) withAttributes:tag];
+    [@"Gameplay" drawAtPoint:NSMakePoint(NSMinX(outRect) + 7, NSMinY(outRect) + 6) withAttributes:tag];
+  } else {
+    NSGradient *backdrop = [[NSGradient alloc] initWithStartingColor:HDDark(appearance) ? HDHex(@"#3A2F58") : HDHex(@"#7A68AD")
+                                                         endingColor:HDDark(appearance) ? HDHex(@"#211A33") : HDHex(@"#4A3B74")];
+    [backdrop drawInRect:outRect angle:90];
+    [[NSColor colorWithWhite:0 alpha:0.28] setFill]; NSRectFill(outRect);
+    CGFloat stripH = round(outW * 9.0 / 16.0);
+    NSRect strip = NSMakeRect(NSMinX(outRect), NSMidY(outRect) - stripH / 2, outW, stripH);
+    HDDrawFakeStream(strip, appearance);
+  }
+  [NSGraphicsContext restoreGraphicsState];
+  [HDHairline() setStroke]; outPath.lineWidth = 1; [outPath stroke];
+
+  NSString *left = @"Stream · 16:9", *right = split ? @"Split · 9:16" : @"Blur fill · 9:16";
+  [left drawAtPoint:NSMakePoint(NSMinX(_sourceRect), 4) withAttributes:labelAttributes];
+  [right drawAtPoint:NSMakePoint(NSMinX(outRect), 4) withAttributes:labelAttributes];
+  if (split) {
+    NSString *hint = @"Click a corner";
+    NSSize hs = [hint sizeWithAttributes:labelAttributes];
+    if (NSMinX(_sourceRect) + [left sizeWithAttributes:labelAttributes].width + hs.width + 16 < NSMaxX(_sourceRect))
+      [hint drawAtPoint:NSMakePoint(NSMaxX(_sourceRect) - hs.width, 4) withAttributes:@{NSFontAttributeName:label, NSForegroundColorAttributeName:HDAccentText()}];
+  }
+}
+@end
+
+// Portrait thumbnail with status/peak badges; doubles as the card's primary Open button.
+@interface HDClipThumbView : NSView
+@property(strong, nonatomic) NSImage *image;
+@property(copy) NSString *peakText;
+@property(copy) NSString *statusText;
+@property(strong) NSColor *statusColor;
+@property(copy) NSString *emoteText;
+@property(copy) NSString *placeholder;
+@property(copy) void (^onClick)(void);
+@end
+@implementation HDClipThumbView
+- (BOOL)acceptsFirstMouse:(NSEvent *)event { return YES; }
+- (void)setImage:(NSImage *)image { _image = image; self.needsDisplay = YES; }
+- (void)mouseDown:(NSEvent *)event { if (self.onClick) self.onClick(); }
+- (BOOL)accessibilityPerformPress { if (self.onClick) self.onClick(); return YES; }
+- (void)resetCursorRects { [self addCursorRect:self.bounds cursor:NSCursor.pointingHandCursor]; }
+- (void)viewDidChangeEffectiveAppearance { [super viewDidChangeEffectiveAppearance]; self.needsDisplay = YES; }
+- (void)drawRect:(NSRect)dirtyRect {
+  NSRect bounds = self.bounds;
+  NSBezierPath *clip = [NSBezierPath bezierPathWithRoundedRect:bounds xRadius:7 yRadius:7];
+  [NSGraphicsContext saveGraphicsState];
+  [clip addClip];
+  if (self.image && self.image.size.width > 0 && self.image.size.height > 0) {
+    NSSize s = self.image.size;
+    CGFloat scale = MAX(NSWidth(bounds) / s.width, NSHeight(bounds) / s.height);
+    NSSize crop = NSMakeSize(NSWidth(bounds) / scale, NSHeight(bounds) / scale);
+    NSRect source = NSMakeRect((s.width - crop.width) / 2, (s.height - crop.height) / 2, crop.width, crop.height);
+    [self.image drawInRect:bounds fromRect:source operation:NSCompositingOperationSourceOver fraction:1 respectFlipped:YES hints:nil];
+  } else {
+    NSGradient *gradient = [[NSGradient alloc] initWithStartingColor:HDDark(self.effectiveAppearance) ? HDHex(@"#2C2540") : HDHex(@"#E4DAF6")
+                                                         endingColor:HDDark(self.effectiveAppearance) ? HDHex(@"#1A1626") : HDHex(@"#CDBFEA")];
+    [gradient drawInRect:bounds angle:-70];
+    NSString *text = self.placeholder ?: @"No preview";
+    NSDictionary *attributes = @{NSFontAttributeName:[NSFont systemFontOfSize:10.5 weight:NSFontWeightMedium], NSForegroundColorAttributeName:HDMuted()};
+    NSSize size = [text sizeWithAttributes:attributes];
+    [text drawAtPoint:NSMakePoint(NSMidX(bounds) - size.width / 2, NSMidY(bounds) - size.height / 2) withAttributes:attributes];
+  }
+  if (self.emoteText.length) {
+    NSGradient *scrim = [[NSGradient alloc] initWithStartingColor:[NSColor colorWithWhite:0 alpha:0.62] endingColor:[NSColor colorWithWhite:0 alpha:0]];
+    [scrim drawInRect:NSMakeRect(0, 0, NSWidth(bounds), 46) angle:90];
+    NSMutableParagraphStyle *paragraph = [NSMutableParagraphStyle new];
+    paragraph.lineBreakMode = NSLineBreakByTruncatingTail;
+    [self.emoteText drawInRect:NSMakeRect(8, 6, NSWidth(bounds) - 16, 14) withAttributes:@{NSFontAttributeName:[NSFont systemFontOfSize:10.5 weight:NSFontWeightSemibold], NSForegroundColorAttributeName:NSColor.whiteColor, NSParagraphStyleAttributeName:paragraph}];
+  }
+  [NSGraphicsContext restoreGraphicsState];
+  NSFont *badge = [NSFont systemFontOfSize:10 weight:NSFontWeightSemibold];
+  NSColor *glass = [NSColor colorWithWhite:0 alpha:0.62];
+  CGFloat y = NSMaxY(bounds) - 22;
+  if (self.peakText.length) HDDrawPill(self.peakText, NSMakePoint(6, y), badge, glass, NSColor.whiteColor, HDSpikeViolet([NSAppearance appearanceNamed:NSAppearanceNameDarkAqua]));
+  if (self.statusText.length) {
+    NSSize size = [self.statusText sizeWithAttributes:@{NSFontAttributeName:badge}];
+    CGFloat width = ceil(size.width) + 14 + 11;
+    HDDrawPill(self.statusText, NSMakePoint(NSMaxX(bounds) - 6 - width, y - (self.peakText.length ? 24 : 0)), badge, glass, NSColor.whiteColor, self.statusColor ?: HDGood());
+  }
+  [HDHairline() setStroke];
+  NSBezierPath *border = [NSBezierPath bezierPathWithRoundedRect:NSInsetRect(bounds, 0.5, 0.5) xRadius:7 yRadius:7];
+  border.lineWidth = 1; [border stroke];
+}
+@end
+
+@interface HDSidebarTintView : NSView
+@end
+@implementation HDSidebarTintView
+- (CALayer *)makeBackingLayer { return [CAGradientLayer layer]; }
+- (BOOL)wantsUpdateLayer { return YES; }
+- (void)updateLayer {
+  CAGradientLayer *layer = (CAGradientLayer *)self.layer;
+  [self.effectiveAppearance performAsCurrentDrawingAppearance:^{
+    BOOL dark = HDDark(self.effectiveAppearance);
+    NSColor *top = [HDAccent() colorWithAlphaComponent:dark ? 0.22 : 0.10];
+    layer.colors = @[(id)top.CGColor, (id)[HDAccent() colorWithAlphaComponent:0].CGColor];
+  }];
+  layer.startPoint = CGPointMake(0.5, 1);
+  layer.endPoint = CGPointMake(0.5, 0.5);
+}
+- (NSView *)hitTest:(NSPoint)point { return nil; }
+- (void)viewDidChangeEffectiveAppearance { [super viewDidChangeEffectiveAppearance]; self.needsDisplay = YES; }
 @end
 
 @interface HDUI ()
@@ -369,6 +785,24 @@ static NSButton *HDButton(NSString *title, id target, SEL action, BOOL primary) 
 @property(strong) NSStackView *vodOptionsBox;
 @property(strong) NSButton *vodOptionsDisclosure;
 @property BOOL liveRunning;
+@property(strong) HDChatPulseView *chatPulse;
+@property(strong) HDLayoutPreviewView *layoutPreview;
+@property(strong) NSSegmentedControl *layoutModeControl;
+@property(strong) NSSegmentedControl *cornerTopControl;
+@property(strong) NSSegmentedControl *cornerBottomControl;
+@property(strong) NSSlider *camRatioSlider;
+@property(strong) NSTextField *camRatioValue;
+@property(strong) NSTextField *reframeNote;
+@property(copy) NSString *reframeLayoutValue;
+@property double reframeRatioValue;
+@property(copy) NSString *reframeCornerValue;
+@property(strong) HDCardView *previewPane;
+@property(strong) AVPlayerView *previewPlayerView;
+@property(strong) NSTextField *previewTitle;
+@property(strong) NSButton *previewToggle;
+@property(copy) NSString *previewPath;
+@property(copy) NSString *previewEntryTitle;
+@property BOOL previewCollapsed;
 @end
 
 
@@ -415,20 +849,30 @@ static NSButton *HDButton(NSString *title, id target, SEL action, BOOL primary) 
   }
   self.window = window;
 
+  // The root stays unpainted so the sidebar's behind-window vibrancy can show through.
   NSView *contentRoot = window.contentView;
-  contentRoot.wantsLayer = YES;
-  contentRoot.layer.backgroundColor = HDInk().CGColor;
-  NSView *root = [[HDCanvasView alloc] initWithFrame:contentRoot.bounds];
+  NSView *root = [[NSView alloc] initWithFrame:contentRoot.bounds];
   root.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
-  root.wantsLayer = YES;
-  root.layer.backgroundColor = HDInk().CGColor;
   [contentRoot addSubview:root];
 
-  HDSurfaceView *sidebar = [[HDSurfaceView alloc] initWithFrame:NSZeroRect];
-  sidebar.wantsLayer = YES;
+  NSVisualEffectView *sidebar = [[NSVisualEffectView alloc] initWithFrame:NSZeroRect];
+  sidebar.material = NSVisualEffectMaterialSidebar;
+  sidebar.blendingMode = NSVisualEffectBlendingModeBehindWindow;
+  sidebar.state = NSVisualEffectStateActive;
   sidebar.translatesAutoresizingMaskIntoConstraints = NO;
+  sidebar.accessibilityLabel = @"Sidebar";
   [root addSubview:sidebar];
   self.sidebar = sidebar;
+  HDSidebarTintView *tint = [[HDSidebarTintView alloc] initWithFrame:NSZeroRect];
+  tint.wantsLayer = YES;
+  tint.translatesAutoresizingMaskIntoConstraints = NO;
+  [sidebar addSubview:tint];
+  [NSLayoutConstraint activateConstraints:@[
+    [tint.leadingAnchor constraintEqualToAnchor:sidebar.leadingAnchor],
+    [tint.trailingAnchor constraintEqualToAnchor:sidebar.trailingAnchor],
+    [tint.topAnchor constraintEqualToAnchor:sidebar.topAnchor],
+    [tint.bottomAnchor constraintEqualToAnchor:sidebar.bottomAnchor]
+  ]];
 
   NSView *content = [[HDCanvasView alloc] initWithFrame:NSZeroRect];
   content.translatesAutoresizingMaskIntoConstraints = NO;
@@ -534,6 +978,7 @@ static NSButton *HDButton(NSString *title, id target, SEL action, BOOL primary) 
     if (!view) continue;
     view.hidden = (i != (NSInteger)page);
   }
+  if (page != HDPageClips) [self stopClipPreview];
   for (HDNavButton *button in self.navButtons) {
     [button setSelectedAppearance:button.tag == (NSInteger)page || (page == HDPageLicense && button.tag == HDPageSettings)];
   }
@@ -657,7 +1102,7 @@ static NSButton *HDButton(NSString *title, id target, SEL action, BOOL primary) 
 
   self.captureModeControl = [NSSegmentedControl segmentedControlWithLabels:@[@"Live Stream", @"Past Broadcast"] trackingMode:NSSegmentSwitchTrackingSelectOne target:self action:@selector(captureModeChanged:)];
   self.captureModeControl.controlSize = NSControlSizeRegular;
-  self.captureModeControl.selectedSegmentBezelColor = HDAccent();
+  HDStyleSegmented(self.captureModeControl);
   self.captureModeControl.accessibilityLabel = @"Capture source";
   self.captureModeControl.font = [NSFont systemFontOfSize:13 weight:NSFontWeightMedium];
   self.captureModeControl.selectedSegment = [[NSUserDefaults standardUserDefaults] integerForKey:@"captureMode"] == 1 ? 1 : 0;
@@ -826,6 +1271,9 @@ static NSButton *HDButton(NSString *title, id target, SEL action, BOOL primary) 
   monitorButton.toolTip = @"Capture health, clip feedback and per-channel learning";
   [actions addArrangedSubview:monitorButton];
   [sessionContent addArrangedSubview:sessionRow];
+  self.chatPulse = [[HDChatPulseView alloc] initWithFrame:NSZeroRect];
+  [sessionContent addArrangedSubview:self.chatPulse];
+  [self.chatPulse.widthAnchor constraintEqualToAnchor:sessionContent.widthAnchor].active = YES;
   [sessionContent addArrangedSubview:actions];
   [sessionRow.widthAnchor constraintEqualToAnchor:sessionContent.widthAnchor].active = YES;
   self.sessionSummary = HDCaption(@"0 clips saved · No pending uploads");
@@ -867,6 +1315,7 @@ static NSButton *HDButton(NSString *title, id target, SEL action, BOOL primary) 
   self.liveBox.hidden = vod;
   self.vodBox.hidden = !vod;
   self.saveButton.hidden = vod;
+  self.chatPulse.hidden = vod;
   // Source changes are user initiated; initial construction must not steal focus.
   if (self.window.isVisible && self.selectedPage == HDPageCapture)
     [self.window makeFirstResponder:vod ? self.vodField : self.channelField];
@@ -929,44 +1378,84 @@ static NSButton *HDButton(NSString *title, id target, SEL action, BOOL primary) 
     [self.recentRows addArrangedSubview:HDCaption(@"Highlights appear automatically when chat reacts. You can also save one with ⌘S during capture.")];
     return;
   }
-  for (NSDictionary *entry in [entries subarrayWithRange:NSMakeRange(0, MIN(3, entries.count))]) {
-    NSStackView *row = [NSStackView new]; row.spacing = 10; row.alignment = NSLayoutAttributeCenterY;
-    NSImageView *preview = HDSymbolImageView(HDSymbolRoleClips, 18, NSColor.secondaryLabelColor, @"Clip preview");
-    for (NSLayoutConstraint *constraint in preview.constraints) if (constraint.firstAttribute == NSLayoutAttributeWidth || constraint.firstAttribute == NSLayoutAttributeHeight) constraint.active = NO;
-    [preview.widthAnchor constraintEqualToConstant:44].active = YES;
-    [preview.heightAnchor constraintEqualToConstant:34].active = YES;
-    preview.imageScaling = NSImageScaleProportionallyUpOrDown;
-    NSString *path = [entry[@"localPath"] isKindOfClass:NSString.class] ? entry[@"localPath"] : @"";
-    BOOL hasPreview = NO;
-    if ([self.target respondsToSelector:@selector(cachedClipPreview:)]) {
-      NSImage *image = [self.target performSelector:@selector(cachedClipPreview:) withObject:path];
-      if (image) { preview.image = image; preview.contentTintColor = nil; hasPreview = YES; }
-    }
-    preview.hidden = NO;
-    preview.wantsLayer = YES;
-    preview.layer.cornerRadius = 5;
-    preview.layer.masksToBounds = YES;
-    if (!hasPreview) preview.contentTintColor = NSColor.secondaryLabelColor;
-    [row addArrangedSubview:preview];
-    NSString *reason = [entry[@"reason"] isKindOfClass:NSString.class] ? entry[@"reason"] : @"Highlight";
-    NSTextField *title = HDLabel(reason, 13, NSFontWeightMedium, NSColor.labelColor);
-    title.maximumNumberOfLines = 1;
-    title.lineBreakMode = NSLineBreakByTruncatingTail;
-    title.toolTip = reason;
-    [title setContentCompressionResistancePriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationHorizontal];
-    [row addArrangedSubview:title];
-    [row addArrangedSubview:[NSView new]];
-    [row addArrangedSubview:HDCaption([entry[@"status"] description].capitalizedString ?: @"Saved")];
-    NSButton *open = HDButton(@"Open", self, @selector(openRecentClip:), NO);
-    open.tag = [entries indexOfObject:entry];
-    [row addArrangedSubview:open]; [self.recentRows addArrangedSubview:row];
-    [row.widthAnchor constraintEqualToAnchor:self.recentRows.widthAnchor].active = YES;
-  }
+  NSStackView *strip = [NSStackView new];
+  strip.orientation = NSUserInterfaceLayoutOrientationHorizontal;
+  strip.alignment = NSLayoutAttributeTop;
+  strip.spacing = 14;
+  NSUInteger count = MIN((NSUInteger)3, entries.count);
+  for (NSUInteger index = 0; index < count; index++) [strip addArrangedSubview:[self clipCardForEntry:entries[index] index:(NSInteger)index]];
+  [self.recentRows addArrangedSubview:strip];
 }
 
-- (void)openRecentClip:(NSButton *)sender {
-  if (sender.tag < 0 || sender.tag >= self.recentEntries.count) return;
-  NSDictionary *entry = self.recentEntries[sender.tag];
+// A 9:16 portrait card: cached thumbnail, peak-chatter badge, status pill, one-click Open.
+- (NSView *)clipCardForEntry:(NSDictionary *)entry index:(NSInteger)index {
+  HDCardView *card = [self card];
+  [card.widthAnchor constraintEqualToConstant:136].active = YES;
+  NSStackView *stack = [NSStackView new];
+  stack.orientation = NSUserInterfaceLayoutOrientationVertical;
+  stack.alignment = NSLayoutAttributeLeading;
+  stack.spacing = 8;
+  stack.translatesAutoresizingMaskIntoConstraints = NO;
+  [card addSubview:stack];
+  [NSLayoutConstraint activateConstraints:@[
+    [stack.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:8],
+    [stack.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-8],
+    [stack.topAnchor constraintEqualToAnchor:card.topAnchor constant:8],
+    [stack.bottomAnchor constraintEqualToAnchor:card.bottomAnchor constant:-8]
+  ]];
+  NSString *path = [entry[@"localPath"] isKindOfClass:NSString.class] ? entry[@"localPath"] : @"";
+  NSString *reason = [entry[@"reason"] isKindOfClass:NSString.class] ? entry[@"reason"] : @"Highlight";
+  NSString *status = [entry[@"status"] isKindOfClass:NSString.class] ? entry[@"status"] : @"saved";
+  BOOL local = path.length && [[NSFileManager defaultManager] fileExistsAtPath:path];
+
+  HDClipThumbView *thumb = [[HDClipThumbView alloc] initWithFrame:NSZeroRect];
+  thumb.translatesAutoresizingMaskIntoConstraints = NO;
+  [thumb.widthAnchor constraintEqualToConstant:120].active = YES;
+  [thumb.heightAnchor constraintEqualToConstant:213].active = YES; // 9:16
+  if (local && [self.target respondsToSelector:@selector(cachedClipPreview:)]) {
+    thumb.image = [self.target performSelector:@selector(cachedClipPreview:) withObject:path];
+  }
+  thumb.placeholder = local ? @"Loading preview…" : @"Cloud only";
+  NSNumber *peak = [entry[@"peak"] isKindOfClass:NSNumber.class] ? entry[@"peak"] : nil;
+  if (peak.integerValue > 0) thumb.peakText = [NSString stringWithFormat:@"%ld chatting", (long)peak.integerValue];
+  thumb.statusText = status.capitalizedString;
+  thumb.statusColor = HDSymbolColorForStatus(status);
+  NSMutableArray<NSString *> *emotes = [NSMutableArray array];
+  if ([entry[@"topEmotes"] isKindOfClass:NSArray.class]) {
+    for (NSDictionary *emote in entry[@"topEmotes"]) {
+      if (![emote isKindOfClass:NSDictionary.class] || emotes.count >= 2) continue;
+      [emotes addObject:[NSString stringWithFormat:@"%@ ×%ld", emote[@"name"] ?: @"", (long)[emote[@"count"] integerValue]]];
+    }
+  }
+  thumb.emoteText = [emotes componentsJoinedByString:@"  "];
+  __weak typeof(self) weakSelf = self;
+  thumb.onClick = ^{ [weakSelf openRecentEntryAtIndex:index]; };
+  thumb.accessibilityElement = YES;
+  thumb.accessibilityRole = NSAccessibilityButtonRole;
+  thumb.accessibilityLabel = [NSString stringWithFormat:@"Open clip: %@", reason];
+  thumb.accessibilityValue = [NSString stringWithFormat:@"%@%@", status.capitalizedString, peak.integerValue > 0 ? [NSString stringWithFormat:@", %ld chatters at peak", (long)peak.integerValue] : @""];
+  thumb.toolTip = reason;
+  [stack addArrangedSubview:thumb];
+
+  NSTextField *title = HDLabel(reason, 11.5, NSFontWeightMedium, NSColor.labelColor);
+  title.maximumNumberOfLines = 1;
+  title.lineBreakMode = NSLineBreakByTruncatingTail;
+  title.toolTip = reason;
+  [title.widthAnchor constraintEqualToConstant:120].active = YES;
+  [stack addArrangedSubview:title];
+  NSButton *open = HDButtonWithSymbol(@"Open", self, @selector(openRecentClip:), NO, HDSymbolRoleOpenClip);
+  open.tag = index;
+  open.accessibilityLabel = [NSString stringWithFormat:@"Open clip %@", reason];
+  [open.widthAnchor constraintEqualToConstant:120].active = YES;
+  [stack addArrangedSubview:open];
+  return card;
+}
+
+- (void)openRecentClip:(NSButton *)sender { [self openRecentEntryAtIndex:sender.tag]; }
+
+- (void)openRecentEntryAtIndex:(NSInteger)index {
+  if (index < 0 || index >= (NSInteger)self.recentEntries.count) return;
+  NSDictionary *entry = self.recentEntries[index];
   if ([self.target respondsToSelector:@selector(recentClipOpened:)]) [self.target performSelector:@selector(recentClipOpened:) withObject:entry];
   NSString *path = [entry[@"localPath"] isKindOfClass:NSString.class] ? entry[@"localPath"] : @"";
   NSString *link = [entry[@"webLink"] isKindOfClass:NSString.class] ? entry[@"webLink"] : @"";
@@ -1040,7 +1529,7 @@ static NSButton *HDButton(NSString *title, id target, SEL action, BOOL primary) 
                                                                   action:@selector(clipFilterChanged:)];
   self.clipFilterControl.selectedSegment = 0;
   [tools addArrangedSubview:self.clipFilterControl];
-  self.clipFilterControl.selectedSegmentBezelColor = HDAccent();
+  HDStyleSegmented(self.clipFilterControl);
   [stack addArrangedSubview:tools];
   [tools.widthAnchor constraintEqualToAnchor:stack.widthAnchor].active = YES;
 
@@ -1104,9 +1593,18 @@ static NSButton *HDButton(NSString *title, id target, SEL action, BOOL primary) 
   scroll.autohidesScrollers = YES;
   scroll.borderType = NSNoBorder;
   scroll.translatesAutoresizingMaskIntoConstraints = NO;
-  [stack addArrangedSubview:scroll];
+  self.previewCollapsed = [[NSUserDefaults standardUserDefaults] boolForKey:@"clipPreviewCollapsed"];
+  NSStackView *libraryRow = [[NSStackView alloc] init];
+  libraryRow.orientation = NSUserInterfaceLayoutOrientationHorizontal;
+  libraryRow.alignment = NSLayoutAttributeTop;
+  libraryRow.spacing = 14;
+  [stack addArrangedSubview:libraryRow];
+  [libraryRow.widthAnchor constraintEqualToAnchor:stack.widthAnchor].active = YES;
+  [libraryRow setContentHuggingPriority:1 forOrientation:NSLayoutConstraintOrientationVertical];
+  [libraryRow addArrangedSubview:scroll];
   [scroll.heightAnchor constraintGreaterThanOrEqualToConstant:240].active = YES;
-  [scroll.widthAnchor constraintEqualToAnchor:stack.widthAnchor].active = YES;
+  [scroll.heightAnchor constraintEqualToAnchor:libraryRow.heightAnchor].active = YES;
+  [scroll setContentHuggingPriority:1 forOrientation:NSLayoutConstraintOrientationHorizontal];
   self.libraryScroll = scroll;
   // Replace the empty table with one useful next step, in the same available space.
   HDCardView *empty = [self card];
@@ -1131,9 +1629,54 @@ static NSButton *HDButton(NSString *title, id target, SEL action, BOOL primary) 
     [message.widthAnchor constraintLessThanOrEqualToAnchor:empty.widthAnchor constant:-40],
     [self.libraryEmptyBody.widthAnchor constraintEqualToAnchor:message.widthAnchor]
   ]];
-  [stack insertArrangedSubview:empty atIndex:[stack.arrangedSubviews indexOfObject:scroll]];
-  [empty.widthAnchor constraintEqualToAnchor:stack.widthAnchor].active = YES;
+  [libraryRow insertArrangedSubview:empty atIndex:0];
+  [empty.heightAnchor constraintEqualToAnchor:libraryRow.heightAnchor].active = YES;
+  [empty setContentHuggingPriority:1 forOrientation:NSLayoutConstraintOrientationHorizontal];
   self.libraryEmptyView = empty;
+
+  // Collapsible quick-preview pane for the selected local clip.
+  HDCardView *pane = [self card];
+  pane.hidden = YES;
+  [libraryRow addArrangedSubview:pane];
+  [pane.widthAnchor constraintEqualToConstant:248].active = YES;
+  [pane.heightAnchor constraintEqualToAnchor:libraryRow.heightAnchor].active = YES;
+  self.previewPane = pane;
+  NSTextField *previewTitle = HDLabel(@"Clip preview", 12, NSFontWeightSemibold, NSColor.labelColor);
+  previewTitle.maximumNumberOfLines = 1;
+  previewTitle.lineBreakMode = NSLineBreakByTruncatingTail;
+  previewTitle.translatesAutoresizingMaskIntoConstraints = NO;
+  [previewTitle setContentCompressionResistancePriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationHorizontal];
+  self.previewTitle = previewTitle;
+  NSButton *closePreview = [NSButton buttonWithImage:HDSymbolImage(HDSymbolRoleDisconnect, 13, NSFontWeightMedium, @"Hide preview") target:self action:@selector(togglePreviewPane:)];
+  closePreview.bordered = NO;
+  closePreview.contentTintColor = NSColor.secondaryLabelColor;
+  closePreview.accessibilityLabel = @"Hide preview";
+  closePreview.toolTip = @"Hide preview";
+  closePreview.translatesAutoresizingMaskIntoConstraints = NO;
+  AVPlayerView *player = [[AVPlayerView alloc] initWithFrame:NSZeroRect];
+  player.controlsStyle = AVPlayerViewControlsStyleInline;
+  player.videoGravity = AVLayerVideoGravityResizeAspect;
+  player.showsFullScreenToggleButton = NO;
+  player.translatesAutoresizingMaskIntoConstraints = NO;
+  player.wantsLayer = YES;
+  player.layer.cornerRadius = 8;
+  player.layer.masksToBounds = YES;
+  player.accessibilityLabel = @"Clip preview player";
+  self.previewPlayerView = player;
+  [pane addSubview:previewTitle]; [pane addSubview:closePreview]; [pane addSubview:player];
+  [NSLayoutConstraint activateConstraints:@[
+    [previewTitle.leadingAnchor constraintEqualToAnchor:pane.leadingAnchor constant:12],
+    [previewTitle.trailingAnchor constraintEqualToAnchor:closePreview.leadingAnchor constant:-6],
+    [previewTitle.topAnchor constraintEqualToAnchor:pane.topAnchor constant:12],
+    [closePreview.trailingAnchor constraintEqualToAnchor:pane.trailingAnchor constant:-8],
+    [closePreview.centerYAnchor constraintEqualToAnchor:previewTitle.centerYAnchor],
+    [closePreview.widthAnchor constraintEqualToConstant:24],
+    [closePreview.heightAnchor constraintEqualToConstant:24],
+    [player.leadingAnchor constraintEqualToAnchor:pane.leadingAnchor constant:12],
+    [player.trailingAnchor constraintEqualToAnchor:pane.trailingAnchor constant:-12],
+    [player.topAnchor constraintEqualToAnchor:previewTitle.bottomAnchor constant:10],
+    [player.bottomAnchor constraintEqualToAnchor:pane.bottomAnchor constant:-12]
+  ]];
 
   NSStackView *footer = [[NSStackView alloc] init];
   footer.orientation = NSUserInterfaceLayoutOrientationHorizontal;
@@ -1143,9 +1686,60 @@ static NSButton *HDButton(NSString *title, id target, SEL action, BOOL primary) 
   [footer addArrangedSubview:self.historyOpenButton];
   NSButton *refresh = HDButtonWithSymbol(@"Refresh", self.target, @selector(refreshHistory:), NO, HDSymbolRoleRefresh);
   [footer addArrangedSubview:refresh];
+  self.previewToggle = HDButtonWithSymbol(self.previewCollapsed ? @"Show Preview" : @"Hide Preview", self, @selector(togglePreviewPane:), NO, HDSymbolRoleOpenClip);
+  self.previewToggle.enabled = NO;
+  self.previewToggle.toolTip = @"Watch the selected clip here before opening it elsewhere.";
+  [footer addArrangedSubview:self.previewToggle];
   NSButton *state = HDButtonWithSymbol(@"Open State Folder", self.target, @selector(openStateFolder:), NO, HDSymbolRoleStateFolder);
   state.hidden = YES;
   [stack addArrangedSubview:footer];
+}
+
+
+- (void)setPreviewPaneVisible:(BOOL)visible {
+  self.previewPane.hidden = !visible;
+  // Make room for the pane at the minimum window width by hiding the secondary columns.
+  for (NSString *identifier in @[@"chatrate", @"size", @"local"]) [[self.historyTable tableColumnWithIdentifier:identifier] setHidden:visible];
+}
+
+- (void)releasePreviewPlayer {
+  [self.previewPlayerView.player pause];
+  self.previewPlayerView.player = nil;
+}
+
+- (void)stopClipPreview { [self.previewPlayerView.player pause]; }
+
+- (void)syncPreviewToggle {
+  self.previewToggle.enabled = self.previewPath.length > 0;
+  self.previewToggle.title = self.previewCollapsed ? @"Show Preview" : @"Hide Preview";
+}
+
+- (void)loadPreviewPlayer {
+  if (!self.previewPath.length || self.previewCollapsed) { [self releasePreviewPlayer]; return; }
+  AVAsset *current = self.previewPlayerView.player.currentItem.asset;
+  if ([current isKindOfClass:AVURLAsset.class] && [((AVURLAsset *)current).URL.path isEqualToString:self.previewPath]) return;
+  [self.previewPlayerView.player pause];
+  self.previewPlayerView.player = [AVPlayer playerWithURL:[NSURL fileURLWithPath:self.previewPath]];
+}
+
+- (void)showClipPreviewForEntry:(NSDictionary *)entry {
+  NSString *path = [entry[@"localPath"] isKindOfClass:NSString.class] ? entry[@"localPath"] : @"";
+  BOOL local = path.length && [[NSFileManager defaultManager] fileExistsAtPath:path];
+  self.previewPath = local ? path : nil;
+  NSString *reason = [entry[@"reason"] isKindOfClass:NSString.class] ? entry[@"reason"] : @"Clip preview";
+  self.previewTitle.stringValue = reason;
+  self.previewTitle.toolTip = reason;
+  [self setPreviewPaneVisible:local && !self.previewCollapsed];
+  [self loadPreviewPlayer];
+  [self syncPreviewToggle];
+}
+
+- (void)togglePreviewPane:(id)sender {
+  self.previewCollapsed = !self.previewCollapsed;
+  [[NSUserDefaults standardUserDefaults] setBool:self.previewCollapsed forKey:@"clipPreviewCollapsed"];
+  [self setPreviewPaneVisible:self.previewPath.length > 0 && !self.previewCollapsed];
+  [self loadPreviewPlayer];
+  [self syncPreviewToggle];
 }
 
 - (NSView *)flexSpacer {
@@ -1296,6 +1890,151 @@ static NSButton *HDButton(NSString *title, id target, SEL action, BOOL primary) 
   [[NSNotificationCenter defaultCenter] addObserver:self.target selector:@selector(storagePreferencesChanged:) name:NSControlTextDidChangeNotification object:self.storageFolder];
   [actions addArrangedSubview:save];
   [formStack addArrangedSubview:actions];
+  [self buildReframeCardInto:stack];
+}
+
+- (NSTextField *)sectionCaption:(NSString *)text {
+  return HDLabel(text, 11, NSFontWeightSemibold, NSColor.secondaryLabelColor);
+}
+
+- (void)buildReframeCardInto:(NSStackView *)stack {
+  HDCardView *card = [self card];
+  [stack addArrangedSubview:card];
+  [card.widthAnchor constraintEqualToAnchor:stack.widthAnchor].active = YES;
+  NSStackView *box = [self insetStack:card];
+  box.spacing = 12;
+  [box addArrangedSubview:HDLabel(@"Vertical layout", 14, NSFontWeightSemibold, NSColor.labelColor)];
+  NSTextField *intro = HDCaption(@"Choose how the 16:9 stream becomes a 9:16 clip.");
+  [box addArrangedSubview:intro];
+  NSStackView *row = [NSStackView new];
+  row.orientation = NSUserInterfaceLayoutOrientationHorizontal;
+  row.alignment = NSLayoutAttributeTop;
+  row.spacing = 22;
+  [box addArrangedSubview:row];
+  [row.widthAnchor constraintEqualToAnchor:box.widthAnchor].active = YES;
+
+  self.layoutPreview = [[HDLayoutPreviewView alloc] initWithFrame:NSZeroRect];
+  [self.layoutPreview.widthAnchor constraintEqualToConstant:330].active = YES;
+  [self.layoutPreview.heightAnchor constraintEqualToConstant:236].active = YES;
+  __weak typeof(self) weakSelf = self;
+  self.layoutPreview.cornerPicked = ^(NSString *corner) {
+    weakSelf.reframeCornerValue = corner;
+    [weakSelf syncReframeControls];
+    [weakSelf pushReframeChange];
+  };
+  [row addArrangedSubview:self.layoutPreview];
+
+  NSStackView *controls = [NSStackView new];
+  controls.orientation = NSUserInterfaceLayoutOrientationVertical;
+  controls.alignment = NSLayoutAttributeLeading;
+  controls.spacing = 8;
+  [row addArrangedSubview:controls];
+  [controls setContentHuggingPriority:1 forOrientation:NSLayoutConstraintOrientationHorizontal];
+  [controls.widthAnchor constraintGreaterThanOrEqualToConstant:230].active = YES;
+
+  [controls addArrangedSubview:[self sectionCaption:@"Layout"]];
+  self.layoutModeControl = [NSSegmentedControl segmentedControlWithLabels:@[@"Blur fill", @"Split facecam"] trackingMode:NSSegmentSwitchTrackingSelectOne target:self action:@selector(reframeLayoutChanged:)];
+  HDStyleSegmented(self.layoutModeControl);
+  self.layoutModeControl.accessibilityLabel = @"Vertical layout";
+  [controls addArrangedSubview:self.layoutModeControl];
+  [self.layoutModeControl.widthAnchor constraintEqualToAnchor:controls.widthAnchor].active = YES;
+  [controls setCustomSpacing:14 afterView:self.layoutModeControl];
+
+  [controls addArrangedSubview:[self sectionCaption:@"Facecam corner"]];
+  self.cornerTopControl = [NSSegmentedControl segmentedControlWithLabels:@[@"Top left", @"Top right"] trackingMode:NSSegmentSwitchTrackingSelectOne target:self action:@selector(reframeCornerChanged:)];
+  self.cornerBottomControl = [NSSegmentedControl segmentedControlWithLabels:@[@"Bottom left", @"Bottom right"] trackingMode:NSSegmentSwitchTrackingSelectOne target:self action:@selector(reframeCornerChanged:)];
+  self.cornerTopControl.accessibilityLabel = @"Facecam corner, top";
+  self.cornerBottomControl.accessibilityLabel = @"Facecam corner, bottom";
+  for (NSSegmentedControl *control in @[self.cornerTopControl, self.cornerBottomControl]) {
+    HDStyleSegmented(control);
+    [controls addArrangedSubview:control];
+    [control.widthAnchor constraintEqualToAnchor:controls.widthAnchor].active = YES;
+  }
+  [controls setCustomSpacing:14 afterView:self.cornerBottomControl];
+
+  NSStackView *ratioHeader = [NSStackView new];
+  ratioHeader.orientation = NSUserInterfaceLayoutOrientationHorizontal;
+  ratioHeader.alignment = NSLayoutAttributeCenterY;
+  [ratioHeader addArrangedSubview:[self sectionCaption:@"Facecam height"]];
+  [ratioHeader addArrangedSubview:[NSView new]];
+  self.camRatioValue = HDLabel(@"35%", 12, NSFontWeightMedium, NSColor.labelColor);
+  self.camRatioValue.font = HDTabular(12);
+  [ratioHeader addArrangedSubview:self.camRatioValue];
+  [controls addArrangedSubview:ratioHeader];
+  [ratioHeader.widthAnchor constraintEqualToAnchor:controls.widthAnchor].active = YES;
+  self.camRatioSlider = [NSSlider sliderWithValue:0.35 minValue:0.20 maxValue:0.50 target:self action:@selector(reframeRatioChanged:)];
+  self.camRatioSlider.continuous = YES;
+  self.camRatioSlider.trackFillColor = HDAccent();
+  self.camRatioSlider.accessibilityLabel = @"Facecam height";
+  [controls addArrangedSubview:self.camRatioSlider];
+  [self.camRatioSlider.widthAnchor constraintEqualToAnchor:controls.widthAnchor].active = YES;
+
+  self.reframeNote = HDCaption(@"Saved to your configuration. Applies the next time capture starts.");
+  [controls addArrangedSubview:self.reframeNote];
+  [self.reframeNote.widthAnchor constraintEqualToAnchor:controls.widthAnchor].active = YES;
+
+  self.reframeLayoutValue = @"blur"; self.reframeRatioValue = 0.35; self.reframeCornerValue = @"bottom-left";
+  [self syncReframeControls];
+}
+
+- (void)syncReframeControls {
+  BOOL split = [self.reframeLayoutValue isEqualToString:@"split"];
+  self.layoutModeControl.selectedSegment = split ? 1 : 0;
+  NSInteger corner = [HDCornerNames() indexOfObject:self.reframeCornerValue];
+  if (corner == NSNotFound) corner = 2;
+  self.cornerTopControl.selectedSegment = corner < 2 ? corner : -1;
+  self.cornerBottomControl.selectedSegment = corner >= 2 ? corner - 2 : -1;
+  self.cornerTopControl.enabled = split;
+  self.cornerBottomControl.enabled = split;
+  self.camRatioSlider.enabled = split;
+  self.camRatioSlider.doubleValue = self.reframeRatioValue;
+  self.camRatioValue.stringValue = [NSString stringWithFormat:@"%.0f%%", self.reframeRatioValue * 100];
+  self.camRatioValue.textColor = split ? NSColor.labelColor : NSColor.tertiaryLabelColor;
+  self.camRatioSlider.accessibilityValueDescription = self.camRatioValue.stringValue;
+  self.layoutPreview.layout = self.reframeLayoutValue;
+  self.layoutPreview.camHeightRatio = self.reframeRatioValue;
+  self.layoutPreview.facecamCorner = self.reframeCornerValue;
+}
+
+- (void)setReframeLayout:(NSString *)layout camHeightRatio:(double)ratio facecamCorner:(NSString *)corner {
+  self.reframeLayoutValue = [layout isEqualToString:@"split"] ? @"split" : @"blur";
+  self.reframeRatioValue = MAX(0.20, MIN(0.50, round(ratio * 100) / 100));
+  self.reframeCornerValue = [HDCornerNames() containsObject:corner] ? corner : @"bottom-left";
+  [self syncReframeControls];
+}
+
+- (void)pushReframeChange {
+  if (![self.target respondsToSelector:@selector(reframeSettingsChanged:)]) return;
+  [self.target performSelector:@selector(reframeSettingsChanged:) withObject:@{
+    @"layout": self.reframeLayoutValue ?: @"blur",
+    @"camHeightRatio": @(self.reframeRatioValue),
+    @"facecamCorner": self.reframeCornerValue ?: @"bottom-left"
+  }];
+}
+
+- (void)reframeLayoutChanged:(NSSegmentedControl *)sender {
+  self.reframeLayoutValue = sender.selectedSegment == 1 ? @"split" : @"blur";
+  [self syncReframeControls];
+  [self pushReframeChange];
+}
+
+- (void)reframeCornerChanged:(NSSegmentedControl *)sender {
+  NSInteger segment = sender.selectedSegment;
+  if (segment < 0) return;
+  self.reframeCornerValue = HDCornerNames()[(sender == self.cornerTopControl ? 0 : 2) + segment];
+  [self syncReframeControls];
+  [self pushReframeChange];
+}
+
+- (void)reframeRatioChanged:(NSSlider *)sender {
+  self.reframeRatioValue = MAX(0.20, MIN(0.50, round(sender.doubleValue * 100) / 100));
+  self.layoutPreview.camHeightRatio = self.reframeRatioValue;
+  self.camRatioValue.stringValue = [NSString stringWithFormat:@"%.0f%%", self.reframeRatioValue * 100];
+  self.camRatioSlider.accessibilityValueDescription = self.camRatioValue.stringValue;
+  // Preview follows the drag; the config is written once the drag ends.
+  NSEventType type = NSApp.currentEvent.type;
+  if (type == NSEventTypeLeftMouseDown || type == NSEventTypeLeftMouseDragged) return;
+  [self pushReframeChange];
 }
 
 - (void)storageCardClicked:(NSButton *)sender {
@@ -1513,13 +2252,47 @@ static NSButton *HDButton(NSString *title, id target, SEL action, BOOL primary) 
   self.sidebarStatusText.textColor = state == HDSessionStateLive ? HDLive() : HDText();
   self.sidebarStatusIcon.image = HDSymbolImage(role, 11, NSFontWeightSemibold, @"Session status");
   self.sidebarStatusIcon.contentTintColor = color;
+  [self setLiveIndicatorPulsing:state == HDSessionStateLive];
   self.captureHeroTitle.stringValue = heroTitle;
   self.captureHeroSubtitle.stringValue = heroSubtitle;
   self.statusLabel.hidden = !self.statusLabel.stringValue.length || [self.statusLabel.stringValue isEqualToString:heroSubtitle];
 }
 
+// Gentle breathing on the sidebar live dot; skipped when the user prefers reduced motion.
+- (void)setLiveIndicatorPulsing:(BOOL)pulsing {
+  self.sidebarStatusIcon.wantsLayer = YES;
+  CALayer *layer = self.sidebarStatusIcon.layer;
+  BOOL animate = pulsing && !NSWorkspace.sharedWorkspace.accessibilityDisplayShouldReduceMotion;
+  if (animate) {
+    if ([layer animationForKey:@"hdPulse"]) return;
+    CABasicAnimation *pulse = [CABasicAnimation animationWithKeyPath:@"opacity"];
+    pulse.fromValue = @1.0; pulse.toValue = @0.35;
+    pulse.duration = 1.1; pulse.autoreverses = YES; pulse.repeatCount = HUGE_VALF;
+    pulse.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
+    [layer addAnimation:pulse forKey:@"hdPulse"];
+  } else {
+    [layer removeAnimationForKey:@"hdPulse"];
+    layer.opacity = 1;
+  }
+}
+
+- (void)recordChatSample:(NSDictionary *)event {
+  NSMutableDictionary *sample = [NSMutableDictionary dictionary];
+  for (NSString *key in @[@"participants", @"threshold", @"median", @"reactions"]) {
+    sample[key] = [event[key] isKindOfClass:NSNumber.class] ? event[key] : @0;
+  }
+  sample[@"trigger"] = @([event[@"trigger"] boolValue]);
+  if ([event[@"at"] isKindOfClass:NSDate.class]) sample[@"at"] = event[@"at"];
+  sample[@"topEmotes"] = [event[@"topEmotes"] isKindOfClass:NSArray.class] ? event[@"topEmotes"] : @[];
+  [self.chatPulse addSample:sample];
+}
+
+- (void)recordChatTrigger:(NSDictionary *)info { [self.chatPulse noteTrigger:info]; }
+- (void)resetChatPulse { [self.chatPulse reset]; }
+
 - (void)setCaptureRunning:(BOOL)running {
   self.liveRunning = running;
+  [self.chatPulse reset];
   self.vodButton.enabled = !running;
   self.vodButton.toolTip = running ? @"Stop the live capture first." : nil;
   self.channelField.enabled = !running;
