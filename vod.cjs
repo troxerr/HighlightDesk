@@ -502,7 +502,8 @@ async function main() {
         preset: reframeConfig.preset,
         blur: reframeConfig.blur,
         encoder: reframeConfig.encoder,
-        bitrate: reframeConfig.bitrate
+        bitrate: reframeConfig.bitrate,
+        priority: reframeConfig.priority
       };
       let reframe = await reframeClip({ ...reframeOptions, extraFilters: extras.filters, ffmpegPath: extras.filters.length ? overlayPlan.ffmpeg : "ffmpeg" });
       if (!reframe.ok && extras.filters.length) {
