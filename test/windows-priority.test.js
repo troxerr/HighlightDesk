@@ -12,6 +12,12 @@ const { reframeClip, killAll } = require("../lib/reframe.js");
 const onWindows = process.platform === "win32";
 const hasFfmpeg = spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).status === 0;
 
+function ownPriorityClass() {
+  const script = `(Get-Process -Id ${process.pid}).PriorityClass`;
+  const result = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], { encoding: "utf8", timeout: 20000, windowsHide: true });
+  return String(result.stdout || "").trim();
+}
+
 function priorityClassOf(token) {
   const script = `$p = Get-CimInstance Win32_Process -Filter "Name='ffmpeg.exe'" | Where-Object { $_.CommandLine -like '*${token}*' } | Select-Object -First 1; if ($p) { (Get-Process -Id $p.ProcessId).PriorityClass }`;
   const result = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], { encoding: "utf8", timeout: 20000, windowsHide: true });
@@ -35,10 +41,17 @@ async function observe(input, level, dir) {
 test("encodes run at the priority class the setting asks for (real Windows process)", { skip: !onWindows || !hasFfmpeg, timeout: 300000 }, async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "hd-prio-"));
   try {
+    // A Windows child inherits a BelowNormal parent's priority class, and CI
+    // runners can start the tests that way (the first run of this test saw an
+    // encode that was never lowered report BelowNormal). Put this process at
+    // Normal first, and insist on it, so the control below means something.
+    os.setPriority(process.pid, os.constants.priority.PRIORITY_NORMAL);
+    assert.equal(ownPriorityClass(), "Normal", "could not set the test process to Normal priority, so the check would prove nothing");
+
     const input = path.join(dir, "long.mp4");
     const made = spawnSync("ffmpeg", [
       "-hide_banner", "-loglevel", "error", "-y",
-      "-f", "lavfi", "-i", "testsrc=size=1920x1080:rate=30", "-t", "90",
+      "-f", "lavfi", "-i", "testsrc=size=1280x720:rate=30", "-t", "40",
       ...videoEncoderArgs({ codec: resolveEncoder(), bitrate: "4M" }), "-pix_fmt", "yuv420p", input
     ], { encoding: "utf8", timeout: 200000, stdio: ["ignore", "ignore", "pipe"] });
     assert.equal(made.status, 0, `could not make the test video: ${made.stderr}`);
