@@ -1,3 +1,4 @@
+const { videoEncoderArgs, resolveEncoder } = require("../lib/encoder.js");
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { spawnSync } = require("node:child_process");
@@ -43,7 +44,7 @@ test("reframes a landscape clip into a 1080x1920 MP4", { skip: !ffmpeg || !ffpro
       "-hide_banner", "-loglevel", "error", "-y",
       "-f", "lavfi", "-i", "testsrc=size=640x360:rate=30",
       "-f", "lavfi", "-i", "sine=frequency=440",
-      "-t", "4", "-c:v", "h264_videotoolbox", "-b:v", "4M", "-allow_sw", "1", "-pix_fmt", "yuv420p",
+      "-t", "4", ...videoEncoderArgs({ codec: resolveEncoder(), bitrate: "4M" }), "-pix_fmt", "yuv420p",
       "-c:a", "aac", input
     ], { stdio: "ignore", timeout: 60000 });
     assert.equal(generated.status, 0);

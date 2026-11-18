@@ -1,3 +1,4 @@
+const { videoEncoderArgs, resolveEncoder } = require("../lib/encoder.js");
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { spawnSync } = require("node:child_process");
@@ -38,7 +39,7 @@ test("exports a real MP4 and writes a sidecar", { skip: !ffmpeg || !ffprobe }, a
       "-hide_banner", "-loglevel", "error", "-y",
       "-f", "lavfi", "-i", "testsrc=size=320x180:rate=30",
       "-f", "lavfi", "-i", "sine=frequency=440",
-      "-t", "6", "-c:v", "h264_videotoolbox", "-b:v", "4M", "-allow_sw", "1", "-pix_fmt", "yuv420p",
+      "-t", "6", ...videoEncoderArgs({ codec: resolveEncoder(), bitrate: "4M" }), "-pix_fmt", "yuv420p",
       "-c:a", "aac", input
     ], { stdio: "ignore", timeout: 60000 });
     assert.equal(generated.status, 0);

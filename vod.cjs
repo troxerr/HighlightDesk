@@ -22,6 +22,7 @@ const { scanChat } = require("./lib/vodscan.js");
 const { readConfig, reframeSettings, storageSettings } = require("./lib/appconfig.js");
 const { createJobStore } = require("./lib/jobstore.js");
 const { reframeClip, killAll: killReframes } = require("./lib/reframe.js");
+const platform = require("./lib/platform.js");
 const overlays = require("./lib/overlays.js");
 const captions = require("./lib/captions.js");
 const feedback = require("./lib/feedback.js");
@@ -372,9 +373,7 @@ async function main() {
     });
   }
 
-  const outputRoot = process.env.HIGHLIGHT_DESK_OUTPUT
-    ? path.resolve(process.env.HIGHLIGHT_DESK_OUTPUT)
-    : path.join(os.homedir(), "Movies", "Highlight Desk");
+  const outputRoot = platform.outputRoot();
   const channel = info.channel || "twitch";
   const folder = path.join(outputRoot, channel);
   const vodFolder = path.join(folder, `vod-${info.id}`);

@@ -75,6 +75,23 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  windows:
+    name: Windows engine tests
+    runs-on: windows-latest
+    env:
+      HIGHLIGHT_DESK_KEYCHAIN: "0"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install FFmpeg
+        run: choco install ffmpeg -y --no-progress
+      - name: Tests
+        run: npm test
+      - name: Syntax check
+        run: npm run check
+
   # Signed/notarized releases are intentionally manual until Apple, OAuth,
   # Lemon Squeezy, and Sparkle release credentials are configured.
   preflight:

@@ -13,6 +13,8 @@ const { startMonitor } = require("./lib/monitor.js");
 const monitorPolicy = require("./lib/monitor-policy.js");
 const { parseChatLine, isPrivileged, isClipCommand, roomId } = require("./dist/irc.js");
 const { settingsFor } = require("./dist/config.js");
+const platform = require("./lib/platform.js");
+const { resolveEncoder } = require("./lib/encoder.js");
 const { parseSource } = require("./lib/stream-source.js");
 const { relaySettings, connectKickChat } = require("./lib/kick-chat.js");
 const { parseManifest, planClip } = require("./lib/manifest.js");
@@ -53,9 +55,7 @@ if (streamSource.platform === "kick") {
   } catch (error) { console.error(error.message); process.exit(2); }
 }
 
-const outputRoot = process.env.HIGHLIGHT_DESK_OUTPUT
-  ? path.resolve(process.env.HIGHLIGHT_DESK_OUTPUT)
-  : path.join(os.homedir(), "Movies", "Highlight Desk");
+const outputRoot = platform.outputRoot();
 const output = streamSource.platform === "kick" ? path.join(outputRoot, "kick", streamSource.slug) : path.join(outputRoot, channel);
 try {
   fs.mkdirSync(output, { recursive: true });
@@ -222,7 +222,7 @@ function fatal(message) {
 
 const bundledRuntimeBin = path.join(__dirname, "runtime", "bin");
 if (fs.existsSync(bundledRuntimeBin)) {
-  process.env.PATH = bundledRuntimeBin + ":" + (process.env.PATH || "");
+  process.env.PATH = bundledRuntimeBin + path.delimiter + (process.env.PATH || "");
 }
 
 function preflight() {
@@ -231,9 +231,10 @@ function preflight() {
     fatal(`Node 22 or newer is required (found ${process.versions.node}).`);
     return false;
   }
+  const win = process.platform === "win32";
   const checks = [
-    ["streamlink", ["--version"], "brew install streamlink"],
-    ["ffmpeg", ["-version"], "brew install ffmpeg"]
+    ...(process.env.HIGHLIGHT_DESK_INPUT ? [] : [["streamlink", ["--version"], win ? "winget install Streamlink.Streamlink" : "brew install streamlink"]]),
+    ["ffmpeg", ["-version"], win ? "winget install Gyan.FFmpeg" : "brew install ffmpeg"]
   ];
   for (const [command, args, hint] of checks) {
     const result = spawnSync(command, args, { stdio: "ignore", timeout: 8000 });
@@ -242,6 +243,8 @@ function preflight() {
       return false;
     }
   }
+  // Pick the encoder now so the first export does not stall on the probe.
+  if (reframeConfig.encoder === "auto") reframeConfig.encoder = resolveEncoder();
   return true;
 }
 
@@ -1274,6 +1277,20 @@ process.on("SIGUSR1", () => {
     mediaTime: lastWindow.mediaTime, windowId: lastWindow.id }, { dir: jobStore.stateDir });
   emit("missed-moment", { message: "Marked this moment for review. No extra clip was created." });
 });
+
+// Windows has no SIGUSR1/2, so a host app can send newline-delimited commands
+// on stdin instead (HIGHLIGHT_DESK_COMMANDS=1): "save", "missed", "stop".
+if (process.env.HIGHLIGHT_DESK_COMMANDS === "1") {
+  const commands = {
+    save: () => process.emit("SIGUSR2"),
+    missed: () => process.emit("SIGUSR1"),
+    stop: () => shutdown(0)
+  };
+  readline.createInterface({ input: process.stdin }).on("line", (line) => {
+    const handler = commands[String(line).trim().toLowerCase()];
+    if (handler) handler();
+  }).on("close", () => { if (!stopping) shutdown(0); });
+}
 process.on("uncaughtException", (error) => {
   emit("fatal", { message: error.stack || error.message });
   shutdown(1);
