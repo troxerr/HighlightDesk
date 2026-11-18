@@ -62,11 +62,25 @@ test("list, delete and has", () => {
 test("invalid names and empty secrets are rejected", () => {
   const { dir, store } = make();
   try {
-    for (const bad of ["", "Has Space", "../escape", "UPPER", "a".repeat(80)]) {
+    for (const bad of ["", "Has Space", "../escape", "-leading", "a/b", "a".repeat(80)]) {
       assert.throws(() => store.set(bad, "x"), /Invalid credential name/);
       assert.equal(store.get(bad), "");
     }
     assert.throws(() => store.set("google.refresh", ""), /empty secret/);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("every name the recorder reads is a valid credential name", () => {
+  const { ACCOUNT } = require("../lib/credentials.js");
+  for (const name of ["dropbox.refresh", "dropbox.appSecret", "google.refresh", "google.clientSecret", "kick.clientSecret", "kick.relayToken", "license.key"]) {
+    assert.ok(ACCOUNT.test(name), `${name} must be accepted`);
+  }
+  const { dir, store } = make();
+  try {
+    store.set("dropbox.appSecret", "s1");
+    store.set("dropbox.appsecret", "s2");
+    assert.equal(store.get("dropbox.appSecret"), "s1", "names are case-sensitive");
+    assert.equal(store.get("dropbox.appsecret"), "s2");
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 

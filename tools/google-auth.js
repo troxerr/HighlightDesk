@@ -2,6 +2,7 @@
 "use strict";
 
 const { openUrl } = require("../lib/open-url.js");
+const { saveSecrets } = require("../lib/credentials.js");
 const crypto = require("node:crypto");
 const fs = require("node:fs");
 const http = require("node:http");
@@ -101,7 +102,9 @@ async function profileEmail(accessToken) {
   }
 }
 
-function mergeConfig(existing, { clientId, clientSecret, refreshToken, email }) {
+// `stored` lists credential names that were saved in the credential store; those
+// fields are written blank so the config file never holds a second copy.
+function mergeConfig(existing, { clientId, clientSecret, refreshToken, email }, stored = []) {
   const base = defaultConfig();
   const next = { ...base, ...(existing && typeof existing === "object" ? existing : {}) };
   next.googleDrive = {
@@ -109,8 +112,8 @@ function mergeConfig(existing, { clientId, clientSecret, refreshToken, email }) 
     ...((existing && existing.googleDrive) || {}),
     enabled: true,
     clientId,
-    clientSecret,
-    refreshToken,
+    clientSecret: stored.includes("google.clientSecret") ? "" : clientSecret,
+    refreshToken: stored.includes("google.refresh") ? "" : refreshToken,
     email
   };
   next.storage = {
@@ -164,18 +167,28 @@ async function main() {
   const code = await codePromise;
   const token = await exchangeCode(code, clientId, clientSecret, verifier);
   const email = await profileEmail(token.access_token);
-  const next = mergeConfig(loaded.config, { clientId, clientSecret, refreshToken: token.refresh_token, email });
+  const saved = saveSecrets({ "google.refresh": token.refresh_token, "google.clientSecret": clientSecret });
+  const next = mergeConfig(loaded.config, { clientId, clientSecret, refreshToken: token.refresh_token, email }, saved.stored);
 
   fs.mkdirSync(path.dirname(configPath), { recursive: true });
   fs.writeFileSync(configPath, JSON.stringify(next, null, 2) + "\n", { mode: 0o600 });
   try { fs.chmodSync(configPath, 0o600); } catch {}
 
-  console.log(`\nSaved the Google Drive refresh token to ${configPath}`);
+  for (const failure of saved.failed) {
+    console.warn(`\nCould not save ${failure.name} in the credential store (${failure.error}); it was kept in ${configPath} instead.`);
+  }
+  console.log(saved.stored.includes("google.refresh")
+    ? `\nSaved the Google Drive refresh token in the Windows credential store (encrypted for your user).`
+    : `\nSaved the Google Drive refresh token to ${configPath}`);
   if (email) console.log(`Connected as ${email}`);
   console.log("Active storage is now Google Drive. Restart capture (or restart Highlight Desk).");
 }
 
-main().catch((error) => {
-  console.error(`\nGoogle Drive setup failed: ${error.message}`);
-  process.exitCode = 1;
-});
+if (require.main === module) {
+  main().catch((error) => {
+    console.error(`\nGoogle Drive setup failed: ${error.message}`);
+    process.exitCode = 1;
+  });
+}
+
+module.exports = { mergeConfig };
