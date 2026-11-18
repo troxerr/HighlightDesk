@@ -85,8 +85,27 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: Install FFmpeg
-        run: choco install ffmpeg -y --no-progress
+      # The same pinned, hash-verified LGPL FFmpeg the app ships. (Chocolatey's
+      # package feed returned 503 once and "succeeded" with nothing installed,
+      # which silently skipped every test that needs FFmpeg.)
+      - name: Fetch the pinned LGPL FFmpeg and Streamlink
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ./tools/fetch-runtime-win.ps1
+          Add-Content -Path $env:GITHUB_PATH -Value "$PWD\runtime\bin"
+          Add-Content -Path $env:GITHUB_PATH -Value "$PWD\runtime\streamlink\bin"
+
+      # Several tests skip when FFmpeg is missing, so a broken setup would
+      # otherwise look green. Fail the job instead.
+      - name: Fail if FFmpeg or ffprobe is missing
+        shell: pwsh
+        run: |
+          ffmpeg -version | Select-Object -First 1
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          ffprobe -version | Select-Object -First 1
+          if ($LASTEXITCODE -ne 0) { exit 1 }
       - name: Tests
         run: npm test
       - name: Syntax check
