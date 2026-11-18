@@ -188,6 +188,7 @@ static NSString *const kConfigTemplate =
 #endif
 @property(copy) NSString *licenseAction;
 @property BOOL licenseValid;
+@property BOOL freeTier;
 @property BOOL licenseRequired;
 @property BOOL licenseSilent;
 @property BOOL licenseValidationAttempted;
@@ -352,6 +353,7 @@ static NSString *HDByteString(unsigned long long bytes) {
   NSString *mode = [storage[@"mode"] isKindOfClass:[NSString class]] ? storage[@"mode"] : @"local";
   NSString *folder = [storage[@"folder"] isKindOfClass:[NSString class]] ? storage[@"folder"] : @"/Highlight Desk";
   environment[@"HIGHLIGHT_DESK_STORAGE"] = mode;
+  environment[@"HIGHLIGHT_DESK_PLAN"] = self.freeTier ? @"free" : @"pro";
   environment[@"HIGHLIGHT_DESK_CONFIG"] = self.configPath;
   if (self.stateDir.length) environment[@"HIGHLIGHT_DESK_STATE"] = self.stateDir;
 
@@ -445,11 +447,33 @@ static NSString *HDByteString(unsigned long long bytes) {
   return date && [[NSDate date] timeIntervalSinceDate:date] <= 14 * 86400;
 }
 
+// Free plan allowance, read from the recorder's usage file (see lib/freetier.js).
+- (NSString *)freeTierNote {
+  if (!self.freeTier) return nil;
+  NSCalendar *calendar = NSCalendar.currentCalendar;
+  calendar.firstWeekday = 2; // Monday
+  NSDate *monday = nil;
+  [calendar rangeOfUnit:NSCalendarUnitWeekOfYear startDate:&monday interval:nil forDate:[NSDate date]];
+  NSDateFormatter *iso = [NSDateFormatter new];
+  iso.locale = [NSLocale localeWithLocaleIdentifier:@"en_US_POSIX"];
+  iso.timeZone = [NSTimeZone timeZoneForSecondsFromGMT:0];
+  iso.dateFormat = @"yyyy-MM-dd'T'HH:mm:ss.SSS'Z'";
+  NSString *dir = self.stateDir.length ? self.stateDir : [NSHomeDirectory() stringByAppendingPathComponent:@"Library/Application Support/Highlight Desk"];
+  NSData *data = [NSData dataWithContentsOfFile:[dir stringByAppendingPathComponent:@"free-tier.json"]];
+  NSDictionary *usage = data ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] : nil;
+  NSInteger used = ([usage isKindOfClass:NSDictionary.class] && [usage[@"weekStart"] isEqual:[iso stringFromDate:monday]]) ? [usage[@"used"] integerValue] : 0;
+  NSInteger left = MAX(0, 3 - used);
+  return left > 0 ? [NSString stringWithFormat:@"Free plan: %ld of 3 clean clips left this week", (long)left] : @"Free plan: new clips are watermarked until Monday";
+}
+
+- (void)refreshFreeTierNote { [self.ui setPlanNote:[self freeTierNote]]; }
+
 - (void)refreshLicenseState {
   self.licenseRequired = [self licenseIsRequired];
   self.trialDays = [self configuredTrialDays];
   if (!self.licenseRequired) {
     self.licenseValid = YES;
+    self.freeTier = NO;
     [self updateLicenseUI];
     return;
   }
@@ -467,6 +491,7 @@ static NSString *HDByteString(unsigned long long bytes) {
   } else {
     self.licenseValid = daysLeft > 0;
   }
+  self.freeTier = !self.licenseValid;
   [self updateLicenseUI];
   if (!self.licenseValid && !self.licenseWindow.isVisible) {
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.6 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
@@ -544,7 +569,7 @@ static NSString *HDByteString(unsigned long long bytes) {
     self.licenseStatusLabel.stringValue = [NSString stringWithFormat:@"Trial active: %ld day%@ left. Enter a license key to continue after the trial.", (long)daysLeft, daysLeft == 1 ? @"" : @"s"];
     state = HDLicenseStateTrial;
   } else {
-    self.licenseStatusLabel.stringValue = @"Trial expired. Enter a license key to start capture.";
+    self.licenseStatusLabel.stringValue = [NSString stringWithFormat:@"Free plan: 3 clean clips a week, then clips carry a watermark. Enter a license key to remove it.%@", self.freeTierNote.length ? [NSString stringWithFormat:@" %@.", self.freeTierNote] : @""];
     state = HDLicenseStateExpired;
   }
   self.licenseTrialLabel.stringValue = daysLeft > 0
@@ -747,6 +772,8 @@ static NSString *HDByteString(unsigned long long bytes) {
   } else if ([action isEqualToString:@"validate"]) {
     self.licenseValid = [self licenseTrialDaysLeft] > 0;
   }
+  self.freeTier = self.licenseRequired && !self.licenseValid;
+  [self refreshFreeTierNote];
   [self updateLicenseUI];
   if (!self.licenseSilent) {
     if (success) {
@@ -2053,6 +2080,7 @@ static NSString *HDByteString(unsigned long long bytes) {
     });
   }
   [self refreshLicenseState];
+  [self refreshFreeTierNote];
   NSString *reviewDirectory = NSProcessInfo.processInfo.environment[@"HIGHLIGHT_DESK_UI_REVIEW"];
   if (reviewDirectory.length) {
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
@@ -2625,6 +2653,7 @@ static NSString *HDByteString(unsigned long long bytes) {
       ? [NSString stringWithFormat:@"Saving clip %ld of %ld", (long)self.vodSaved + 1, (long)total]
       : [NSString stringWithFormat:@"Saved clip %ld of %ld", (long)self.vodSaved, (long)total];
   }
+  if ([type isEqualToString:@"free-tier"] || [type isEqualToString:@"clip-saved"]) [self refreshFreeTierNote];
   [self.ui updateSummaryWithClips:self.clipCount queue:self.queuedCount storage:self.storageLabel trial:self.trialDays];
   [self refreshStatusItem];
 }
@@ -2640,11 +2669,6 @@ static NSString *HDByteString(unsigned long long bytes) {
 - (void)toggleCapture:(id)sender {
   if (!self.task.running && self.vodTask.running) {
     self.status.stringValue = @"Finish or cancel the VOD scan before starting a live capture.";
-    return;
-  }
-  if (!self.task.running && !self.licenseValid) {
-    [self showLicense:nil];
-    [self alert:@"A license is required" info:@"Your trial has ended. Activate a license key to start capturing."];
     return;
   }
   if (self.task.running) {
@@ -2799,12 +2823,6 @@ static NSString *HDByteString(unsigned long long bytes) {
     self.status.stringValue = @"Stop the live capture before scanning a VOD.";
     return;
   }
-  if (!self.licenseValid) {
-    [self showLicense:nil];
-    [self alert:@"A license is required" info:@"Your trial has ended. Activate a license key to find highlights."];
-    return;
-  }
-
   NSCharacterSet *space = [NSCharacterSet whitespaceAndNewlineCharacterSet];
   NSString *link = [self.ui.vodField.stringValue stringByTrimmingCharactersInSet:space];
   NSString *startText = [self.ui.vodStartField.stringValue stringByTrimmingCharactersInSet:space];

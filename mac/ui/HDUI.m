@@ -786,6 +786,8 @@ static void HDDrawPerson(NSRect rect, NSColor *color) {
 @property(strong) NSButton *vodOptionsDisclosure;
 @property BOOL liveRunning;
 @property(strong) HDChatPulseView *chatPulse;
+@property(copy) NSString *summaryBase;
+@property(copy) NSString *planNoteText;
 @property(strong) HDLayoutPreviewView *layoutPreview;
 @property(strong) NSSegmentedControl *layoutModeControl;
 @property(strong) NSSegmentedControl *cornerTopControl;
@@ -2196,7 +2198,18 @@ static void HDDrawPerson(NSRect rect, NSColor *color) {
 
 
 - (void)updateSummaryWithClips:(NSInteger)clips queue:(NSInteger)queue storage:(NSString *)storage trial:(NSInteger)trial {
-  self.sessionSummary.stringValue = [NSString stringWithFormat:@"%ld clip%@ this session · %ld pending upload%@ · %@", (long)clips, clips == 1 ? @"" : @"s", (long)queue, queue == 1 ? @"" : @"s", storage.length ? storage : @"This Mac"];
+  self.summaryBase = [NSString stringWithFormat:@"%ld clip%@ this session · %ld pending upload%@ · %@", (long)clips, clips == 1 ? @"" : @"s", (long)queue, queue == 1 ? @"" : @"s", storage.length ? storage : @"This Mac"];
+  [self renderSummary];
+}
+
+- (void)renderSummary {
+  NSString *base = self.summaryBase ?: self.sessionSummary.stringValue;
+  self.sessionSummary.stringValue = self.planNoteText.length ? [NSString stringWithFormat:@"%@ · %@", base, self.planNoteText] : base;
+}
+
+- (void)setPlanNote:(NSString *)note {
+  self.planNoteText = note;
+  [self renderSummary];
 }
 
 - (void)setSessionLive:(BOOL)live status:(NSString *)status {

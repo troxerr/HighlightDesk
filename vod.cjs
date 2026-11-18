@@ -26,6 +26,7 @@ const platform = require("./lib/platform.js");
 const overlays = require("./lib/overlays.js");
 const captions = require("./lib/captions.js");
 const feedback = require("./lib/feedback.js");
+const freeTier = require("./lib/freetier.js");
 
 const VERSION = "3.0.0";
 const EVENTS = process.env.HIGHLIGHT_DESK_EVENTS === "1";
@@ -493,16 +494,26 @@ async function main() {
         input: rawTarget, width: reframeConfig.width, height: reframeConfig.height,
         index: saved + 1, metadata
       });
+      // Free plan: after the weekly allowance, clips carry a watermark.
+      const tier = freeTier.status({ dir: jobStore.stateDir });
+      const watermark = tier.watermark ? freeTier.prepareWatermark() : null;
+      if (tier.watermark && !watermark) emit("error", { message: "Could not prepare the free-plan watermark. Saving this clip without it." });
       const reframeOptions = {
         input: rawTarget,
         output: verticalTarget,
+        watermark,
         width: reframeConfig.width,
         height: reframeConfig.height,
         crf: reframeConfig.crf,
         preset: reframeConfig.preset,
         blur: reframeConfig.blur,
         encoder: reframeConfig.encoder,
-        bitrate: reframeConfig.bitrate
+        bitrate: reframeConfig.bitrate,
+        layout: reframeConfig.layout,
+        camHeightRatio: reframeConfig.camHeightRatio,
+        facecamCorner: reframeConfig.facecamCorner,
+        facecam: reframeConfig.facecam,
+        gameplay: reframeConfig.gameplay
       };
       let reframe = await reframeClip({ ...reframeOptions, extraFilters: extras.filters, ffmpegPath: extras.filters.length ? overlayPlan.ffmpeg : "ffmpeg" });
       if (!reframe.ok && extras.filters.length) {
@@ -515,6 +526,9 @@ async function main() {
       if (reframe.ok) {
         primary = verticalTarget;
         metadata.reframed = true;
+        metadata.watermarked = Boolean(watermark);
+        if (tier.plan === "free" && !tier.watermark) freeTier.recordClip({ dir: jobStore.stateDir });
+        if (tier.plan === "free") emit("free-tier", freeTier.status({ dir: jobStore.stateDir }));
         metadata.vertical = { file: path.basename(verticalTarget), width: reframeConfig.width, height: reframeConfig.height };
         metadata.file = path.basename(verticalTarget);
         if (!storageConfig.keepRaw) {

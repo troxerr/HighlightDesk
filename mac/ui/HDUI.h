@@ -128,5 +128,7 @@ typedef NS_ENUM(NSInteger, HDPage) {
 - (void)showClipPreviewForEntry:(NSDictionary *)entry;
 - (void)stopClipPreview;
 - (void)setLicenseState:(HDLicenseState)state;
+// Free-plan allowance, shown after the session summary on Capture. Pass nil to clear.
+- (void)setPlanNote:(NSString *)note;
 
 @end

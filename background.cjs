@@ -24,6 +24,7 @@ const { createJobStore } = require("./lib/jobstore.js");
 const { writeCrashReport } = require("./lib/crashlog.js");
 const { exportClip, writeSidecar, killAll: killExports } = require("./lib/exporter.js");
 const { reframeClip, killAll: killReframes } = require("./lib/reframe.js");
+const freeTier = require("./lib/freetier.js");
 
 const VERSION = "3.0.0";
 const settings = settingsFor("desktop");
@@ -725,9 +726,14 @@ async function runPipeline(job, plan, rawTarget) {
   if (reframeConfig.enabled) {
     const base = path.basename(rawTarget, ".mp4");
     verticalTarget = uniquePath(output, `${base}-9x16.mp4`);
+    // Free plan: after the weekly allowance, clips carry a watermark.
+    const tier = freeTier.status({ dir: jobStore.stateDir });
+    const watermark = tier.watermark ? freeTier.prepareWatermark() : null;
+    if (tier.watermark && !watermark) emit("error", { message: "Could not prepare the free-plan watermark. Saving this clip without it." });
     const reframe = await reframeClip({
       input: rawTarget,
       output: verticalTarget,
+      watermark,
       width: reframeConfig.width,
       height: reframeConfig.height,
       crf: reframeConfig.crf,
@@ -759,6 +765,9 @@ async function runPipeline(job, plan, rawTarget) {
     }
     reframed = true;
     metadata.reframed = true;
+    metadata.watermarked = Boolean(watermark);
+    if (tier.plan === "free" && !tier.watermark) freeTier.recordClip({ dir: jobStore.stateDir });
+    if (tier.plan === "free") emit("free-tier", freeTier.status({ dir: jobStore.stateDir }));
     metadata.vertical = {
       file: path.basename(verticalTarget),
       width: reframeConfig.width,
@@ -1262,6 +1271,7 @@ function start() {
   jobStore.recover();
   emitQueue();
   emitHistory();
+  if (freeTier.currentPlan() === "free") emit("free-tier", freeTier.status({ dir: jobStore.stateDir }));
   if (jobStore.disabled) emit("error", { message: `Could not write the upload queue at ${jobStore.stateDir}; retries will not survive restart.` });
   record();
   connect();
