@@ -96,6 +96,8 @@ The detector samples unique chatters per 5-second window and uses a median/MAD b
 
 Non-secret settings live in `~/.highlight-desk.json` (or `HIGHLIGHT_DESK_CONFIG`). The macOS app stores OAuth refresh tokens (and a legacy Dropbox app secret) in Keychain and clears those secrets from the config after migration. The CLI reads Keychain tokens through `security` by default; set `HIGHLIGHT_DESK_KEYCHAIN=0` to force config/env-only credentials.
 
+On Windows, secrets are encrypted with the signed-in user's Windows DPAPI key (through the built-in `powershell.exe`) and saved in `%APPDATA%\Highlight Desk\credentials.json`; other Windows users and other PCs cannot decrypt them. Manage them with `node tools/credentials.js set|has|delete|list <name>` (for example `google.refresh`, `dropbox.refresh`, `dropbox.appSecret`, `kick.relayToken`). `set` reads the secret from a hidden prompt or from stdin, and there is no command that prints a secret. Environment variables and the config file still take precedence over the store.
+
 ```json
 {
   "reframe": {
@@ -281,10 +283,12 @@ lib/appconfig.js         Config/env parsing, storage modes, provider settings
 lib/dropbox.js           Dropbox OAuth refresh, folder creation, upload
 lib/google-drive.js      Google Drive OAuth refresh, folder creation, resumable upload
 lib/jobstore.js          Persistent upload queue and clip history
+lib/credentials.js       Secret store: macOS Keychain, Windows DPAPI
 lib/storage/             Provider selection and local adapter
 tools/dropbox-auth.js    Dropbox refresh-token helper
 tools/google-auth.js     Google Drive refresh-token helper
 tools/oauth-bridge.js    Browser OAuth helper used by the app
+tools/credentials.js     Manage secrets in the Windows credential store
 tools/license.js         Lemon Squeezy license helper
 tools/fetch-sparkle.sh   Fetch the pinned Sparkle framework
 tools/make-appcast.sh    Sign a release DMG into a Sparkle appcast
