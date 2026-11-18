@@ -140,7 +140,7 @@ test("reframe filter is unchanged without extras and appends extras before the p
 
 test("captions finds whisper-cli on PATH or in the bundled runtime", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "hd-whisper-"));
-  const bin = path.join(dir, "whisper-cli");
+  const bin = path.join(dir, process.platform === "win32" ? "whisper-cli.exe" : "whisper-cli");
   fs.writeFileSync(bin, "#!/bin/sh\n");
   fs.chmodSync(bin, 0o755);
   try {
@@ -153,7 +153,7 @@ test("captions finds whisper-cli on PATH or in the bundled runtime", () => {
 });
 
 test("the captions model lives in Application Support/Highlight Desk/models", () => {
-  assert.equal(captions.modelPath({ HIGHLIGHT_DESK_STATE: "/x/state" }), "/x/state/models/ggml-base.en.bin");
+  assert.equal(captions.modelPath({ HIGHLIGHT_DESK_STATE: "/x/state" }), path.join(path.resolve("/x/state"), "models", "ggml-base.en.bin"));
   assert.match(captions.MODEL_URL, /^https:\/\/huggingface\.co\/ggerganov\/whisper\.cpp\/resolve\/main\/ggml-base\.en\.bin$/);
 });
 

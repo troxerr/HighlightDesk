@@ -66,7 +66,7 @@ test("Kick chat drives the actual capture sampler and keeps its own channel iden
   assert.equal(h.run("pending.trigger"), "auto");
   assert.equal(h.run("channel"), "kick--example");
   assert.equal(h.run("streamSource.platform"), "kick");
-  assert.match(h.run("output"), /kick\/example$/);
+  assert.match(h.run("output"), /kick[\\/]example$/);
 });
 
 test("Kick command clipping accepts moderators and ignores ordinary viewers", t => {

@@ -54,5 +54,5 @@ test("disabled state store keeps an in-memory queue", () => {
 });
 
 test("defaultStateDir honors HIGHLIGHT_DESK_STATE", () => {
-  assert.equal(defaultStateDir({ HIGHLIGHT_DESK_STATE: "/tmp/example" }), "/tmp/example");
+  assert.equal(defaultStateDir({ HIGHLIGHT_DESK_STATE: "/tmp/example" }), require("node:path").resolve("/tmp/example"));
 });
