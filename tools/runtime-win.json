@@ -1,0 +1,19 @@
+{
+  "_comment": "Pins for the Windows runtime bundled with the app. Empty tag/asset/sha256 means 'not pinned yet': run tools/fetch-runtime-win.ps1 -Discover in CI and copy the printed values here. The ffmpeg tag must be a dated autobuild-* tag, never the rolling 'latest'.",
+  "ffmpeg": {
+    "repo": "BtbN/FFmpeg-Builds",
+    "assetPattern": "-win64-lgpl-7\\.1\\.zip$",
+    "excludeTags": ["latest"],
+    "tag": "",
+    "asset": "",
+    "sha256": ""
+  },
+  "streamlink": {
+    "repo": "streamlink/windows-builds",
+    "assetPattern": "x86_64\\.zip$",
+    "excludeTags": [],
+    "tag": "",
+    "asset": "",
+    "sha256": ""
+  }
+}

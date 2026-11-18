@@ -92,6 +92,52 @@ jobs:
       - name: Syntax check
         run: npm run check
 
+  windows-runtime:
+    name: Windows bundled runtime
+    runs-on: windows-latest
+    env:
+      HIGHLIGHT_DESK_KEYCHAIN: "0"
+      HIGHLIGHT_DESK_E2E: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # Pins live in tools/runtime-win.json. While they are empty this step
+      # discovers and prints them (see the job summary) so they can be committed,
+      # and the last step of the job fails until they are.
+      - name: Fetch the LGPL FFmpeg and portable Streamlink
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $pins = Get-Content -Raw tools/runtime-win.json | ConvertFrom-Json
+          $pinned = [bool]($pins.ffmpeg.sha256 -and $pins.streamlink.sha256)
+          "RUNTIME_PINNED=$pinned" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          if ($pinned) { ./tools/fetch-runtime-win.ps1 } else { ./tools/fetch-runtime-win.ps1 -Discover }
+
+      # PATH is cut down to the bundled binaries, Node and Windows itself, so no
+      # system FFmpeg or Streamlink can be picked up by mistake.
+      - name: Verify and test with only the bundled runtime
+        shell: pwsh
+        run: |
+          $node = Split-Path (Get-Command node).Source
+          $env:PATH = "$PWD\runtime\bin;$PWD\runtime\streamlink\bin;$node;C:\Windows\System32;C:\Windows;C:\Windows\System32\WindowsPowerShell\v1.0"
+          "ffmpeg   : $((Get-Command ffmpeg).Source)"
+          "streamlink: $((Get-Command streamlink).Source)"
+          node tools/verify-runtime.js
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          node tools/run-tests.js test/e2e-clip.test.js test/windows-priority.test.js
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      - name: Require pinned downloads
+        if: env.RUNTIME_PINNED != 'True'
+        shell: pwsh
+        run: |
+          Write-Host "::error::The runtime is not pinned. Copy the tag, asset and sha256 from the job summary into tools/runtime-win.json."
+          exit 1
+
   # Signed/notarized releases are intentionally manual until Apple, OAuth,
   # Lemon Squeezy, and Sparkle release credentials are configured.
   preflight:

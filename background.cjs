@@ -220,9 +220,12 @@ function fatal(message) {
   shutdown(1);
 }
 
-const bundledRuntimeBin = path.join(__dirname, "runtime", "bin");
-if (fs.existsSync(bundledRuntimeBin)) {
-  process.env.PATH = bundledRuntimeBin + path.delimiter + (process.env.PATH || "");
+// Bundled binaries: FFmpeg in runtime/bin, and on Windows a portable Streamlink
+// folder (it keeps its own Python) in runtime/streamlink/bin.
+const bundledDirs = [path.join(__dirname, "runtime", "bin"), path.join(__dirname, "runtime", "streamlink", "bin")]
+  .filter((dir) => fs.existsSync(dir));
+if (bundledDirs.length) {
+  process.env.PATH = [...bundledDirs, process.env.PATH || ""].join(path.delimiter);
 }
 
 function preflight() {
