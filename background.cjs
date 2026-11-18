@@ -705,10 +705,10 @@ async function runPipeline(job, plan, rawTarget) {
   };
 
   const files = plan.rows.map((row) => path.join(temp, row.file));
-  let result = await exportClip({ files, offset: plan.offset, duration: plan.duration, target: rawTarget, encoder: reframeConfig.encoder, bitrate: reframeConfig.bitrate });
+  let result = await exportClip({ files, offset: plan.offset, duration: plan.duration, target: rawTarget, encoder: reframeConfig.encoder, bitrate: reframeConfig.bitrate, priority: reframeConfig.priority });
   if (!result.ok) {
     emit("error", { message: `Export failed, retrying: ${result.error}` });
-    result = await exportClip({ files, offset: plan.offset, duration: plan.duration, target: rawTarget, encoder: reframeConfig.encoder, bitrate: reframeConfig.bitrate });
+    result = await exportClip({ files, offset: plan.offset, duration: plan.duration, target: rawTarget, encoder: reframeConfig.encoder, bitrate: reframeConfig.bitrate, priority: reframeConfig.priority });
   }
   if (!result.ok) {
     emit("clip-failed", { error: result.error, reason: job.reason });
@@ -733,7 +733,8 @@ async function runPipeline(job, plan, rawTarget) {
       preset: reframeConfig.preset,
       blur: reframeConfig.blur,
       encoder: reframeConfig.encoder,
-      bitrate: reframeConfig.bitrate
+      bitrate: reframeConfig.bitrate,
+      priority: reframeConfig.priority
     });
     if (!reframe.ok) {
       metadata.reframed = false;

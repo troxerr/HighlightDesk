@@ -55,7 +55,7 @@ test("readConfig honors HIGHLIGHT_DESK_CONFIG", () => {
 
 test("reframeSettings clamps and defaults", () => {
   const defaults = config.reframeSettings({});
-  assert.deepEqual(defaults, { enabled: true, width: 1080, height: 1920, crf: 20, preset: "veryfast", blur: 20, encoder: process.platform === "darwin" ? "h264_videotoolbox" : "auto", bitrate: "8M" });
+  assert.deepEqual(defaults, { enabled: true, width: 1080, height: 1920, crf: 20, preset: "veryfast", blur: 20, encoder: process.platform === "darwin" ? "h264_videotoolbox" : "auto", priority: process.platform === "win32" ? "belowNormal" : "normal", bitrate: "8M" });
 
   const custom = config.reframeSettings({
     reframe: { enabled: false, width: 999, height: 1001, crf: 99, preset: "nope", blur: 999 }
@@ -66,6 +66,10 @@ test("reframeSettings clamps and defaults", () => {
   assert.equal(custom.crf, 30);
   assert.equal(custom.preset, "veryfast");
   assert.equal(custom.blur, 60);
+
+  assert.equal(config.reframeSettings({ reframe: { priority: "belowNormal" } }, {}).priority, "belowNormal");
+  assert.equal(config.reframeSettings({ reframe: { priority: "normal" } }, {}).priority, "normal");
+  assert.equal(config.reframeSettings({ reframe: { priority: "nope" } }, { HIGHLIGHT_DESK_PRIORITY: "belowNormal" }).priority, "belowNormal");
 
   const env = config.reframeSettings({ reframe: { enabled: true } }, { HIGHLIGHT_DESK_REFRAME: "0" });
   assert.equal(env.enabled, false);
