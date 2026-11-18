@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 "use strict";
 
-// Highlight Desk VOD mode: paste a Twitch VOD link, download its chat replay,
+// Chatclip VOD mode: paste a Twitch VOD link, download its chat replay,
 // find the moments chat reacted to, and save each one as a 9:16 clip.
 //
 //   node vod.cjs <vod link> [--top 15] [--start 1:00:00] [--end 2:30:00]

@@ -34,8 +34,8 @@ After the notarized DMG is uploaded:
 ```sh
 VERSION=3.1.0 \
 BUILD=5 \
-DOWNLOAD_URL="https://your-domain.example/HighlightDesk-3.1.0-arm64.dmg" \
-DMG="mac/build/Highlight Desk-arm64.dmg" \
+DOWNLOAD_URL="https://your-domain.example/Chatclip-3.1.0-arm64.dmg" \
+DMG="mac/build/Chatclip-arm64.dmg" \
 OUTPUT=site/appcast.xml \
 ./tools/make-appcast.sh
 ```

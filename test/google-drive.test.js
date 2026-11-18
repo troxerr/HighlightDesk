@@ -108,7 +108,7 @@ test("uses an existing folder instead of creating it", async () => {
     if (url.startsWith("https://www.googleapis.com/drive/v3/files?q=")) {
       lists += 1;
       return lists === 1
-        ? response({ files: [{ id: "existing-folder", name: "Highlight Desk" }] })
+        ? response({ files: [{ id: "existing-folder", name: "Chatclip" }] })
         : response({ files: [] });
     }
     if (url.startsWith("https://www.googleapis.com/drive/v3/files?fields=")) {

@@ -61,7 +61,7 @@ async function licenseRequest(action, {
   };
   if (!paths[action]) throw new Error(`Unknown license action: ${action}`);
   const body = new URLSearchParams({ license_key: licenseKey });
-  if (action === "activate") body.set("instance_name", instanceName || "Highlight Desk");
+  if (action === "activate") body.set("instance_name", instanceName || "Chatclip");
   if (action === "validate" || action === "deactivate") {
     if (!instanceId) throw new Error("An instance ID is required.");
     body.set("instance_id", instanceId);
@@ -95,7 +95,7 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   const action = String(args.action || "validate").trim();
   const licenseKey = String(args["license-key"] || process.env.LEMON_LICENSE_KEY || "").trim();
-  const instanceName = String(args["instance-name"] || process.env.LEMON_INSTANCE_NAME || "Highlight Desk").trim();
+  const instanceName = String(args["instance-name"] || process.env.LEMON_INSTANCE_NAME || "Chatclip").trim();
   const instanceId = String(args["instance-id"] || process.env.LEMON_INSTANCE_ID || "").trim();
   const productId = String(args["product-id"] || process.env.LEMON_PRODUCT_ID || "").trim();
   const apiBase = String(args["api-base"] || process.env.LEMON_API_BASE || DEFAULT_API_BASE).trim();

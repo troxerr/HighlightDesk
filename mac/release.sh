@@ -15,8 +15,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-APP_DIR="$ROOT/mac/build/Highlight Desk.app"
-ENTITLEMENTS="$ROOT/mac/HighlightDesk.entitlements"
+APP_DIR="$ROOT/mac/build/Chatclip.app"
+ENTITLEMENTS="$ROOT/mac/Chatclip.entitlements"
 IDENTITY="${DEVELOPER_ID_APPLICATION:-}"
 NOTARY_PROFILE="${NOTARY_PROFILE:-}"
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$ROOT/mac/Info.plist" 2>/dev/null || echo 0.0.0)"
@@ -111,9 +111,9 @@ STAGE="$(mktemp -d "${TMPDIR:-/tmp}/highlight-desk-dmg.XXXXXX")"
 trap 'rm -rf "$STAGE"' EXIT
 cp -R "$APP_DIR" "$STAGE/"
 ln -s /Applications "$STAGE/Applications"
-DMG="$ROOT/mac/build/Highlight Desk-$VERSION-$ARCH.dmg"
+DMG="$ROOT/mac/build/Chatclip-$VERSION-$ARCH.dmg"
 rm -f "$DMG"
-hdiutil create -volname "Highlight Desk" -srcfolder "$STAGE" -ov -format UDZO "$DMG" >/dev/null
+hdiutil create -volname "Chatclip" -srcfolder "$STAGE" -ov -format UDZO "$DMG" >/dev/null
 codesign --force --sign "$IDENTITY" "$DMG"
 
 echo "Notarizing $DMG…"
@@ -133,7 +133,7 @@ spctl -a -t open --context context:primary-signature -vv "$DMG"
 
 MOUNT="$(mktemp -d "${TMPDIR:-/tmp}/highlight-desk-mount.XXXXXX")"
 hdiutil attach "$DMG" -nobrowse -mountpoint "$MOUNT" >/dev/null
-spctl -a -t exec -vv "$MOUNT/Highlight Desk.app"
+spctl -a -t exec -vv "$MOUNT/Chatclip.app"
 hdiutil detach "$MOUNT" >/dev/null
 rmdir "$MOUNT" 2>/dev/null || true
 

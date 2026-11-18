@@ -57,7 +57,7 @@ NOTARY_PROFILE="highlightdesk-notary" \
 
 `--check` verifies the signing identity, notary credentials, bundled runtime, Sparkle, appcast public key, license product/checkout, and OAuth client IDs without signing anything. Unsigned CI artifacts are built by [docs/CI.md](CI.md).
 
-`mac/release.sh` signs nested Node/FFmpeg/Streamlink binaries and frameworks, signs the app with hardened runtime and `mac/HighlightDesk.entitlements`, builds a DMG, submits it to `notarytool`, staples it, and verifies Gatekeeper.
+`mac/release.sh` signs nested Node/FFmpeg/Streamlink binaries and frameworks, signs the app with hardened runtime and `mac/Chatclip.entitlements`, builds a DMG, submits it to `notarytool`, staples it, and verifies Gatekeeper.
 
 Before release, confirm:
 

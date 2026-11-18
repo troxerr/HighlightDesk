@@ -4,8 +4,8 @@ set -euo pipefail
 # Builds a signed Sparkle 2 appcast item for a notarized DMG.
 #
 #   VERSION=3.1.0 BUILD=5 \
-#   DOWNLOAD_URL=https://example.com/HighlightDesk-3.1.0-arm64.dmg \
-#   DMG="mac/build/Highlight Desk-3.1.0-arm64.dmg" \
+#   DOWNLOAD_URL=https://example.com/Chatclip-3.1.0-arm64.dmg \
+#   DMG="mac/build/Chatclip-3.1.0-arm64.dmg" \
 #   OUTPUT=site/appcast.xml \
 #   ./tools/make-appcast.sh
 #
@@ -19,7 +19,7 @@ BUILD="${BUILD:?Set BUILD}"
 DMG="${DMG:?Set DMG}"
 DOWNLOAD_URL="${DOWNLOAD_URL:?Set DOWNLOAD_URL}"
 OUTPUT="${OUTPUT:-$ROOT/site/appcast.xml}"
-RELEASE_NOTES="${RELEASE_NOTES:-A new version of Highlight Desk is available.}"
+RELEASE_NOTES="${RELEASE_NOTES:-A new version of Chatclip is available.}"
 SIGN_UPDATE="$ROOT/mac/vendor/sparkle/bin/sign_update"
 [[ -x "$SIGN_UPDATE" ]] || { echo "Missing Sparkle sign_update; run tools/fetch-sparkle.sh" >&2; exit 1; }
 [[ -f "$DMG" ]] || { echo "DMG not found: $DMG" >&2; exit 1; }
@@ -42,12 +42,12 @@ cat > "$OUTPUT" <<XML
      xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle"
      xmlns:dc="http://purl.org/dc/elements/1.1/">
   <channel>
-    <title>Highlight Desk</title>
+    <title>Chatclip</title>
     <link>${DOWNLOAD_URL%/*}/</link>
-    <description>Highlight Desk releases</description>
+    <description>Chatclip releases</description>
     <language>en</language>
     <item>
-      <title>Highlight Desk ${VERSION}</title>
+      <title>Chatclip ${VERSION}</title>
       <pubDate>${PUB_DATE}</pubDate>
       <sparkle:version>${BUILD}</sparkle:version>
       <sparkle:shortVersionString>${VERSION}</sparkle:shortVersionString>

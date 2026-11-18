@@ -45,7 +45,7 @@ function waitForCode(state) {
       const returnedState = url.searchParams.get("state");
       const code = url.searchParams.get("code");
       response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-      response.end("<!doctype html><meta charset=utf-8><title>Highlight Desk</title><body style='font:16px system-ui;padding:32px'><h1>Dropbox connected</h1><p>You can close this tab and return to the terminal.</p></body>");
+      response.end("<!doctype html><meta charset=utf-8><title>Chatclip</title><body style='font:16px system-ui;padding:32px'><h1>Dropbox connected</h1><p>You can close this tab and return to the terminal.</p></body>");
       server.close();
       if (error) return reject(new Error(error));
       if (returnedState !== state) return reject(new Error("Dropbox OAuth state did not match."));
@@ -127,7 +127,7 @@ async function main() {
     authorize.searchParams.set("client_id", appKey);
     authorize.searchParams.set("response_type", "code");
     authorize.searchParams.set("token_access_type", "offline");
-    console.log("\nAuthorize Highlight Desk in Dropbox:");
+    console.log("\nAuthorize Chatclip in Dropbox:");
     console.log(authorize.toString());
     console.log("\nAfter approving, Dropbox shows an authorization code. Copy it and paste it below.\n");
     openBrowser(authorize.toString());
@@ -150,7 +150,7 @@ async function main() {
     authorize.searchParams.set("redirect_uri", REDIRECT_URI);
     authorize.searchParams.set("state", state);
 
-    console.log("\nAuthorize Highlight Desk in Dropbox:");
+    console.log("\nAuthorize Chatclip in Dropbox:");
     console.log(authorize.toString());
     console.log(`\nThe Dropbox app needs redirect URI ${REDIRECT_URI}`);
     console.log("and scopes files.content.write plus files.metadata.write.\n");
@@ -168,7 +168,7 @@ async function main() {
   try { fs.chmodSync(configPath, 0o600); } catch {}
 
   console.log(`\nSaved the Dropbox refresh token to ${configPath}`);
-  console.log("Restart capture (or restart Highlight Desk) to start uploading vertical clips.");
+  console.log("Restart capture (or restart Chatclip) to start uploading vertical clips.");
 }
 
 main().catch((error) => {
