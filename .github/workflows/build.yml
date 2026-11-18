@@ -194,7 +194,7 @@ jobs:
         working-directory: win
         run: npm ci --no-audit --no-fund
 
-      # Unsigned on purpose (no certificate yet). Output: win/dist/HighlightDesk-<version>-x64-unsigned.exe
+      # Unsigned on purpose (no certificate yet). Output: win/dist/ChatClip-<version>-x64-unsigned.exe
       - name: Build the installer
         working-directory: win
         run: npm run pack
@@ -212,7 +212,7 @@ jobs:
       - name: Smoke test the unpacked app
         shell: pwsh
         run: |
-          $exe = (Get-ChildItem win\dist\win-unpacked -Filter "Highlight Desk.exe").FullName
+          $exe = (Get-ChildItem win\dist\win-unpacked -Filter "ChatClip.exe").FullName
           "app: $exe"
           $out = "$env:RUNNER_TEMP\smoke\unpacked"
           $env:PATH = "C:\Windows\System32;C:\Windows"
@@ -225,11 +225,12 @@ jobs:
       - name: Silent install, smoke test the installed app, silent uninstall
         shell: pwsh
         run: |
-          $setup = (Get-ChildItem win\dist -Filter "HighlightDesk-*-x64-unsigned.exe").FullName
-          $dir = "$env:LOCALAPPDATA\Programs\Highlight Desk"
-          Start-Process -FilePath $setup -ArgumentList "/S" -Wait
-          $exe = Join-Path $dir "Highlight Desk.exe"
-          if (-not (Test-Path $exe)) { Write-Host "::error::not installed at $dir"; Get-ChildItem "$env:LOCALAPPDATA\Programs" -ErrorAction SilentlyContinue; exit 1 }
+          $setup = (Get-ChildItem win\dist -Filter "ChatClip-*-x64-unsigned.exe").FullName
+          $dir = "$env:RUNNER_TEMP\smoke\ChatClip"
+          $install = Start-Process -FilePath $setup -ArgumentList "/S /D=$dir" -PassThru -Wait
+          if ($install.ExitCode -ne 0) { exit $install.ExitCode }
+          $exe = Join-Path $dir "ChatClip.exe"
+          if (-not (Test-Path $exe)) { Write-Host "::error::not installed at $dir"; exit 1 }
           "installed: $exe"
           $out = "$env:RUNNER_TEMP\smoke\installed"
           $env:PATH = "C:\Windows\System32;C:\Windows"
@@ -238,7 +239,7 @@ jobs:
           $p = Start-Process -FilePath $exe -PassThru -Wait
           if (Test-Path "$out\result.json") { Get-Content "$out\result.json" }
           $failed = $p.ExitCode -ne 0
-          $uninstall = Join-Path $dir "Uninstall Highlight Desk.exe"
+          $uninstall = Join-Path $dir "Uninstall ChatClip.exe"
           if (Test-Path $uninstall) { Start-Process -FilePath $uninstall -ArgumentList "/S" -Wait }
           # The uninstaller hands off to a copy of itself, so wait for the folder to go.
           for ($i = 0; $i -lt 60 -and (Test-Path $exe); $i++) { Start-Sleep -Seconds 1 }
@@ -258,15 +259,15 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: HighlightDesk-windows-installer-unsigned
-          path: win/dist/HighlightDesk-*-x64-unsigned.exe
+          name: ChatClip-windows-installer-unsigned
+          path: win/dist/ChatClip-*-x64-unsigned.exe
           if-no-files-found: error
           retention-days: 14
 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: HighlightDesk-windows-screenshots
+          name: ChatClip-windows-screenshots
           path: ${{ runner.temp }}/upload/screenshots
           if-no-files-found: warn
           retention-days: 14

@@ -2,8 +2,9 @@
   "name": "highlight-desk-windows",
   "version": "0.1.0",
   "private": true,
-  "description": "Highlight Desk for Windows",
-  "author": "Highlight Desk",
+  "productName": "ChatClip",
+  "description": "ChatClip for Windows",
+  "author": "ChatClip",
   "scripts": {
     "stage": "node tools/stage.js",
     "pack": "node tools/stage.js && electron-builder --config electron-builder.yml --win nsis --x64 --publish never"

@@ -61,7 +61,7 @@
     const form = el("form", { class: "card", novalidate: true, onsubmit: (event) => { event.preventDefault(); onStart(); } },
       el("label", { for: "channel", text: "Twitch channel" }),
       ui.channel,
-      el("p", { class: "help", id: "channel-help", text: "Highlight Desk watches the channel's chat. When chat reacts strongly it saves the 30 seconds around the moment as a vertical clip." }),
+      el("p", { class: "help", id: "channel-help", text: "ChatClip watches the channel's chat. When chat reacts strongly it saves the 30 seconds around the moment as a vertical clip." }),
       ui.ackRow,
       el("div", { class: "row", style: false }, ui.startBtn, ui.stopBtn, ui.saveBtn));
 
@@ -158,7 +158,7 @@
     ui.about = el("dl", { class: "kv" });
     $("page-settings").replaceChildren(el("h1", { id: "h-settings", text: "Settings" }), ui.licenseCard,
       el("div", { class: "card" }, el("h2", { text: "General" }),
-        el("label", { class: "check", for: "launch" }, ui.launch, el("span", { text: "Start Highlight Desk when I sign in to Windows" })),
+        el("label", { class: "check", for: "launch" }, ui.launch, el("span", { text: "Start ChatClip when I sign in to Windows" })),
         el("dl", { class: "kv" }, el("dt", { text: "Clip folder" }), ui.folder),
         el("div", { class: "row", style: false }, el("button", { class: "btn", type: "button", text: "Open clip folder", onclick: () => guarded(() => hd.openClipFolder()) }))),
       el("div", { class: "card" }, el("h2", { text: "About" }), ui.about));
@@ -199,7 +199,7 @@
       if (name === page) button.setAttribute("aria-current", "page"); else button.removeAttribute("aria-current");
     }
     if (page === "clips") loadClips();
-    document.title = `${page[0].toUpperCase()}${page.slice(1)} — Highlight Desk`;
+    document.title = `${page[0].toUpperCase()}${page.slice(1)} — ChatClip`;
   }
 
   function render() { if (!snap) return; updateCapture(); updateSettings(); updateClips(); }
@@ -211,7 +211,7 @@
       await new Promise((resolve, reject) => { const s = document.createElement("script"); s.src = "../dev/stub-bridge.js"; s.onload = resolve; s.onerror = reject; document.head.append(s); });
     }
     hd = window.hd;
-    if (!hd) { document.body.textContent = "The app bridge is missing. Please reinstall Highlight Desk."; return; }
+    if (!hd) { document.body.textContent = "The app bridge is missing. Please reinstall ChatClip."; return; }
     buildCapture(); buildClips(); buildSettings();
     for (const button of document.querySelectorAll(".nav")) button.addEventListener("click", () => show(button.dataset.page));
     hd.on("capture", (capture) => { if (snap) { snap = { ...snap, capture }; render(); } });
@@ -224,5 +224,5 @@
     render();
     window.__hdReady = true;
   }
-  boot().catch((error) => { document.body.textContent = `Highlight Desk could not start: ${error.message}`; });
+  boot().catch((error) => { document.body.textContent = `ChatClip could not start: ${error.message}`; });
 })();

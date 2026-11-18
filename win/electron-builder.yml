@@ -2,7 +2,7 @@
 # mirrors the repo layout (so the engine's relative requires work unchanged),
 # then builds from it. No asar: the recorder runs as a separate Node process.
 appId: com.highlightdesk.app
-productName: Highlight Desk
+productName: ChatClip
 electronVersion: 45.3.4
 directories:
   app: stage
@@ -14,7 +14,7 @@ win:
   target:
     - target: nsis
       arch: x64
-  artifactName: HighlightDesk-${version}-x64-unsigned.exe
+  artifactName: ChatClip-${version}-x64-unsigned.exe
   signAndEditExecutable: false
 nsis:
   oneClick: true

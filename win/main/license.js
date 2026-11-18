@@ -92,7 +92,7 @@ function createLicenseManager({
   async function activate(rawKey) {
     const licenseKey = String(rawKey || "").trim();
     if (!licenseKey) throw new Error("Enter your license key.");
-    const result = await request("activate", { licenseKey, instanceName: `Highlight Desk (${deviceName})`, productId: build.productId || "" });
+    const result = await request("activate", { licenseKey, instanceName: `ChatClip (${deviceName})`, productId: build.productId || "" });
     if (!result || !result.valid || !result.instanceId) throw new Error("That license key could not be activated.");
     store.set(KEY, licenseKey);
     save({ instance: result.instanceId, email: result.customerEmail || "", productName: result.productName || "", lastValidatedAt: now().toISOString() });

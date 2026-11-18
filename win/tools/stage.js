@@ -23,7 +23,7 @@ const copy = (from, to = from) => {
 
 fs.mkdirSync(stage, { recursive: true });
 fs.writeFileSync(path.join(stage, "package.json"), JSON.stringify({
-  name: "highlight-desk", productName: "Highlight Desk", version: winPkg.version,
+  name: "highlight-desk", productName: winPkg.productName, version: winPkg.version,
   description: winPkg.description, author: winPkg.author, main: "win/main/main.js"
 }, null, 2));
 copy("background.cjs"); copy("lib"); copy("dist");
