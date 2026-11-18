@@ -109,7 +109,9 @@ else
   echo "warning: Sparkle.framework not found; auto-update is disabled." >&2
 fi
 
-if [[ -f "$ROOT/mac/icon.png" ]]; then
+if [[ -d "$ROOT/Icon/AppIcon.icon" ]] && "$ROOT/tools/make_icon.sh" "$BUILD_DIR/icon" >/dev/null 2>&1; then
+  cp "$BUILD_DIR/icon/Assets.car" "$BUILD_DIR/icon/AppIcon.icns" "$APP_DIR/Contents/Resources/"
+elif [[ -f "$ROOT/mac/icon.png" ]]; then
   ICONSET="$BUILD_DIR/AppIcon.iconset"
   rm -rf "$ICONSET"
   mkdir -p "$ICONSET"
