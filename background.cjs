@@ -66,6 +66,8 @@ try {
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), "highlight-desk-"));
 const manifestFile = path.join(temp, "segments.csv");
 const EVENTS = process.env.HIGHLIGHT_DESK_EVENTS === "1";
+const smokeChat = streamSource.platform === "twitch" && Boolean(process.env.HIGHLIGHT_DESK_SMOKE && process.env.HIGHLIGHT_DESK_INPUT);
+let smokeSpikeSent = false;
 
 let chat = null;
 let source = null;
@@ -998,6 +1000,13 @@ async function tick() {
       maybeExport(true).catch(error => emit("error", { message: `Exporter: ${error.message}` }));
     }
 
+    if (smokeChat && !smokeSpikeSent && mediaTime >= settings.preRollSec && paceHistory.length >= settings.warmupWindows) {
+      smokeSpikeSent = true;
+      for (let i = 0; i < 12; i += 1) {
+        handleChatLine(`:smoke_user${i}!user@localhost PRIVMSG #${channel} :Pog that was insane`);
+      }
+    }
+
     const windowParticipants = viewers.size;
     const windowReactions = reactors.size;
     const windowMessages = messageCount;
@@ -1260,7 +1269,14 @@ function start() {
   emitHistory();
   if (jobStore.disabled) emit("error", { message: `Could not write the upload queue at ${jobStore.stateDir}; retries will not survive restart.` });
   record();
-  connect();
+  if (smokeChat) {
+    // Exercise chat parsing and scoring without relying on Twitch in CI.
+    settings.warmupWindows = 3;
+    settings.sampleMs = 1000;
+    handleChatLine(`:tmi.twitch.tv 366 smoke_user #${channel} :End of /NAMES list`);
+  } else {
+    connect();
+  }
   ticker = setInterval(tick, settings.sampleMs);
   emoteTimer = setInterval(() => {
     if (room) getEmotes(room).catch((error) => emit("error", { message: `7TV: ${error.message}` }));

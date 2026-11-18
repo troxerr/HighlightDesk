@@ -21,6 +21,7 @@ This file is checked against the code by `test/protocol-doc.test.js`: every even
 | `HIGHLIGHT_DESK_STATE` | State folder (queue, history, feedback, models). Default per OS, see `lib/platform.js`. |
 | `HIGHLIGHT_DESK_OUTPUT` | Clip output root. Default per OS. |
 | `HIGHLIGHT_DESK_INPUT` | Use a local video file instead of Streamlink (development and tests). |
+| `HIGHLIGHT_DESK_SMOKE` | Windows smoke output folder. When combined with `HIGHLIGHT_DESK_INPUT`, the recorder uses a deterministic chat spike in place of live Twitch chat. |
 | `HIGHLIGHT_DESK_KEYCHAIN=0` | Do not read the OS credential store. |
 | `HIGHLIGHT_DESK_PRIORITY` | `normal` or `belowNormal` CPU priority for the export and 9:16 encodes (default: `belowNormal` on Windows, `normal` elsewhere). The live recorder is always at normal priority. |
 

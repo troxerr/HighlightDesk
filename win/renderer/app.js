@@ -43,8 +43,8 @@
 
   function buildCapture() {
     const root = $("page-capture");
-    ui.status = { badge: el("span", { class: "badge idle", id: "phase" }), msg: el("p", { id: "phase-msg" }), channel: el("dd"), buffered: el("dd"), saved: el("dd") };
-    const statusCard = el("div", { class: "card", "aria-live": "polite" },
+    ui.status = { badge: el("span", { class: "badge idle", id: "phase" }), msg: el("p", { id: "phase-msg", "aria-live": "polite" }), channel: el("dd"), buffered: el("dd", { id: "buffered-time" }), saved: el("dd") };
+    const statusCard = el("div", { class: "card" },
       el("div", { class: "row" }, el("h2", { text: "Status" }), ui.status.badge),
       ui.status.msg,
       el("dl", { class: "stats" },
@@ -56,7 +56,7 @@
     ui.ack = el("input", { type: "checkbox", id: "ack" });
     ui.ackRow = el("label", { class: "check", for: "ack" }, ui.ack, el("span", { text: "I have permission to record this channel, and I will follow Twitch's terms and the streamer's wishes." }));
     ui.startBtn = el("button", { class: "btn primary", type: "submit", text: "Start capture" });
-    ui.stopBtn = el("button", { class: "btn", type: "button", text: "Stop", onclick: () => guarded(async () => { snap = await hd.stop(); render(); }) });
+    ui.stopBtn = el("button", { class: "btn", type: "button", text: "Stop", onclick: () => guarded(async () => { snap = await hd.stop(); updateCapture(); }) });
     ui.saveBtn = el("button", { class: "btn", type: "button", text: "Save highlight now", title: "Ctrl+S", onclick: () => guarded(() => hd.saveHighlight()) });
     const form = el("form", { class: "card", novalidate: true, onsubmit: (event) => { event.preventDefault(); onStart(); } },
       el("label", { for: "channel", text: "Twitch channel" }),
@@ -74,7 +74,7 @@
     const input = ui.channel.value.trim();
     await guarded(async () => {
       snap = await hd.start(input, { acknowledge: ui.ack.checked });
-      render();
+      updateCapture();
     });
   }
 
@@ -82,7 +82,9 @@
     const c = snap.capture;
     ui.status.badge.className = `badge ${c.phase}`;
     ui.status.badge.textContent = PHASE_LABEL[c.phase] || c.phase;
-    ui.status.msg.textContent = c.message;
+    const lastProblem = c.lastError && c.phase !== "error" ? ` Last problem: ${c.lastError}` : "";
+    const message = c.message + lastProblem;
+    if (ui.status.msg.textContent !== message) ui.status.msg.textContent = message;
     ui.status.channel.textContent = c.channel || "—";
     ui.status.buffered.textContent = c.phase === "idle" ? "—" : clock(c.mediaTime);
     ui.status.saved.textContent = String(c.clipsSaved);
@@ -94,7 +96,9 @@
     ui.saveBtn.disabled = !["watching"].includes(c.phase);
     ui.ackRow.hidden = snap.settings.permissionAcknowledged || running;
     ui.startBtn.disabled = !snap.license.valid;
-    if (c.lastError && c.phase !== "error") ui.status.msg.append(document.createTextNode(` Last problem: ${c.lastError}`));
+  }
+
+  function updateRecentClips() {
     renderClipRows(ui.recent, clipList.slice(0, 3), true);
     ui.recentHead.hidden = ui.recent.hidden = clipList.length === 0;
   }
@@ -152,7 +156,7 @@
   }
 
   function buildSettings() {
-    ui.licenseCard = el("div", { class: "card" });
+    ui.licenseCard = el("div", { class: "card", id: "license-card" });
     ui.launch = el("input", { type: "checkbox", id: "launch", onchange: () => guarded(async () => { await hd.settings.set({ launchAtLogin: ui.launch.checked }); await refresh(); }) });
     ui.folder = el("dd");
     ui.about = el("dl", { class: "kv" });
@@ -202,9 +206,17 @@
     document.title = `${page[0].toUpperCase()}${page.slice(1)} — ChatClip`;
   }
 
-  function render() { if (!snap) return; updateCapture(); updateSettings(); updateClips(); }
-  async function refresh() { snap = await hd.getState(); render(); }
-  async function loadClips() { clipList = await hd.clips.list(); render(); }
+  async function refresh() {
+    snap = await hd.getState();
+    updateCapture();
+    updateSettings();
+  }
+
+  async function loadClips() {
+    clipList = await hd.clips.list();
+    updateRecentClips();
+    updateClips();
+  }
 
   async function boot() {
     if (!window.hd && new URLSearchParams(location.search).has("stub")) {
@@ -214,14 +226,13 @@
     if (!hd) { document.body.textContent = "The app bridge is missing. Please reinstall ChatClip."; return; }
     buildCapture(); buildClips(); buildSettings();
     for (const button of document.querySelectorAll(".nav")) button.addEventListener("click", () => show(button.dataset.page));
-    hd.on("capture", (capture) => { if (snap) { snap = { ...snap, capture }; render(); } });
+    hd.on("capture", (capture) => { if (snap) { snap = { ...snap, capture }; updateCapture(); } });
     hd.on("clips", () => loadClips());
     hd.on("navigate", (page) => { if (PAGES.includes(page)) show(page); });
     hd.on("notice", (message) => notify(message));
     await refresh();
-    clipList = await hd.clips.list();
+    await loadClips();
     show(new URLSearchParams(location.search).get("page") || "capture");
-    render();
     window.__hdReady = true;
   }
   boot().catch((error) => { document.body.textContent = `ChatClip could not start: ${error.message}`; });

@@ -206,8 +206,8 @@ jobs:
           & "$PWD\runtime\bin\ffmpeg.exe" -hide_banner -loglevel error -y -f lavfi -i "testsrc=size=1280x720:rate=30" -f lavfi -i "sine=frequency=440:sample_rate=48000" -t 45 -c:v libopenh264 -b:v 3M -pix_fmt yuv420p -g 30 -c:a aac -f mpegts "$env:RUNNER_TEMP\smoke\input.ts"
           if ($LASTEXITCODE -ne 0) { exit 1 }
 
-      # Runs the real window: starts the packaged recorder on the test video, saves a
-      # highlight, screenshots every page. PATH is cut down so only the bundled
+      # Runs the real window and verifies the automatic clip from a simulated chat
+      # spike. PATH is cut down so only the bundled
       # FFmpeg and Streamlink can be found.
       - name: Smoke test the unpacked app
         shell: pwsh
@@ -244,6 +244,13 @@ jobs:
           # The uninstaller hands off to a copy of itself, so wait for the folder to go.
           for ($i = 0; $i -lt 60 -and (Test-Path $exe); $i++) { Start-Sleep -Seconds 1 }
           if (Test-Path $exe) { Write-Host "::error::uninstall left the app behind"; $failed = $true }
+          if (-not $failed) {
+            $result = Get-Content "$out\result.json" -Raw | ConvertFrom-Json
+            if (-not $result.ok -or -not $result.clip.path -or -not (Test-Path -LiteralPath $result.clip.path -PathType Leaf)) {
+              Write-Host "::error::the saved highlight was missing after uninstall"
+              $failed = $true
+            }
+          }
           if ($failed) { exit 1 }
 
       - name: Collect screenshots
