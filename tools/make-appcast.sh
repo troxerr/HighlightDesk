@@ -4,7 +4,7 @@ set -euo pipefail
 # Builds a signed Sparkle 2 appcast item for a notarized DMG.
 #
 #   VERSION=3.1.0 BUILD=5 \
-#   DOWNLOAD_URL=https://example.com/ClipSpike-3.1.0-arm64.dmg \
+#   DOWNLOAD_URL=https://clipspike.com/ClipSpike-3.1.0-arm64.dmg \
 #   DMG="mac/build/ClipSpike-3.1.0-arm64.dmg" \
 #   OUTPUT=site/appcast.xml \
 #   ./tools/make-appcast.sh

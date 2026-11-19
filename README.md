@@ -354,7 +354,7 @@ The app embeds [Sparkle 2.10.1](https://sparkle-project.org/) when `mac/vendor/S
 ```sh
 ./tools/fetch-sparkle.sh
 ./mac/vendor/sparkle/bin/generate_keys   # once; keep the private key out of git
-SU_FEED_URL="https://your-domain.example/appcast.xml" \
+SU_FEED_URL="https://clipspike.com/appcast.xml" \
 SU_PUBLIC_ED_KEY="<public key>" \
 npm run build:mac
 ```
@@ -363,7 +363,7 @@ Generate a signed appcast after notarizing the DMG:
 
 ```sh
 VERSION=3.1.0 BUILD=5 \
-DOWNLOAD_URL="https://your-domain.example/ClipSpike-3.1.0-arm64.dmg" \
+DOWNLOAD_URL="https://clipspike.com/ClipSpike-3.1.0-arm64.dmg" \
 DMG="mac/build/ClipSpike-arm64.dmg" \
 OUTPUT=site/appcast.xml \
 ./tools/make-appcast.sh
