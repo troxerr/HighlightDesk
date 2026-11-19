@@ -371,6 +371,12 @@ OUTPUT=site/appcast.xml \
 
 See [docs/UPDATE.md](docs/UPDATE.md) for CI keys, appcast hosting, and the update test checklist.
 
+## Source license
+
+ClipSpike is source-available under the [Functional Source License, Version 1.1, MIT Future License](LICENSE) (FSL-1.1-MIT). You may read, modify, and self-host the code for any purpose except offering a competing commercial product; each version converts to the MIT license on the second anniversary of its release.
+
+The license covers the code only. The ClipSpike name, logo, and app icon are not licensed for use by others.
+
 ## License and trial
 
 Development builds are unlocked (`HDLicenseRequired` is false). A release build enables the 7-day trial and Lemon Squeezy license activation:
