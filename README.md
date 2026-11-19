@@ -397,7 +397,7 @@ Open **License…** in the app menu to see trial days, enter a key, activate, de
 - offline grace: 14 days after the last successful validation
 - instance limit: controlled by the Lemon Squeezy product (the UI recommends two Macs)
 
-Set `LEMON_API_BASE` only for testing or a proxy. A license is required to start a new capture after the trial ends; an already-running capture is not interrupted.
+Set `LEMON_API_BASE` only for testing or a proxy. After the trial ends the app drops to the free plan: 3 clean clips a week, then clips carry a watermark. A valid license removes the weekly limit and the watermark; an already-running capture is never interrupted.
 
 ## Commercial release
 
