@@ -23,8 +23,10 @@ function normalize(data, action, expectedProductId = "") {
   const instance = data.instance || {};
   const status = String(license.status || "");
   const productId = meta.product_id === undefined || meta.product_id === null ? "" : String(meta.product_id);
-  if (expectedProductId && productId && productId !== String(expectedProductId)) {
-    throw new Error(`This license belongs to a different product (${productId}).`);
+  if (expectedProductId && productId !== String(expectedProductId)) {
+    throw new Error(productId
+      ? `This license belongs to a different product (${productId}).`
+      : "This license could not be matched to Chatclip.");
   }
   const ok = action === "activate"
     ? Boolean(data.activated)
@@ -47,6 +49,12 @@ function normalize(data, action, expectedProductId = "") {
   };
 }
 
+function transientError(message) {
+  const error = new Error(message);
+  error.transient = true;
+  return error;
+}
+
 async function licenseRequest(action, {
   licenseKey,
   instanceName = "",
@@ -63,20 +71,26 @@ async function licenseRequest(action, {
   };
   if (!paths[action]) throw new Error(`Unknown license action: ${action}`);
   const body = new URLSearchParams({ license_key: licenseKey });
-  if (action === "activate") body.set("instance_name", instanceName || "Highlight Desk");
+  if (action === "activate") body.set("instance_name", instanceName || "Chatclip");
   if (action === "validate" || action === "deactivate") {
     if (!instanceId) throw new Error("An instance ID is required.");
     body.set("instance_id", instanceId);
   }
-  const response = await fetchImpl(`${String(apiBase).replace(/\/$/, "")}${paths[action]}`, {
-    method: "POST",
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/x-www-form-urlencoded"
-    },
-    body,
-    signal: AbortSignal.timeout(30000)
-  });
+  let response;
+  try {
+    response = await fetchImpl(`${String(apiBase).replace(/\/$/, "")}${paths[action]}`, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/x-www-form-urlencoded"
+      },
+      body,
+      signal: AbortSignal.timeout(30000)
+    });
+  } catch (cause) {
+    // Offline, DNS failure or timeout: says nothing about whether the key is valid.
+    throw transientError("Could not reach the license service. Check your connection.");
+  }
   let data = {};
   try {
     data = await response.json();
@@ -84,6 +98,9 @@ async function licenseRequest(action, {
     data = {};
   }
   if (!response.ok) {
+    if (response.status >= 500 || response.status === 429) {
+      throw transientError(data.error || data.message || `License service unavailable (${response.status}).`);
+    }
     throw new Error(data.error || data.message || `License service failed (${response.status}).`);
   }
   if (data.error) throw new Error(String(data.error));
@@ -103,7 +120,7 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   const action = String(args.action || "validate").trim();
   const licenseKey = resolveLicenseKey(args);
-  const instanceName = String(args["instance-name"] || process.env.LEMON_INSTANCE_NAME || "Highlight Desk").trim();
+  const instanceName = String(args["instance-name"] || process.env.LEMON_INSTANCE_NAME || "Chatclip").trim();
   const instanceId = String(args["instance-id"] || process.env.LEMON_INSTANCE_ID || "").trim();
   const productId = String(args["product-id"] || process.env.LEMON_PRODUCT_ID || "").trim();
   const apiBase = String(args["api-base"] || process.env.LEMON_API_BASE || DEFAULT_API_BASE).trim();
@@ -113,7 +130,7 @@ async function main() {
 
 if (require.main === module) {
   main().catch((error) => {
-    process.stdout.write(JSON.stringify({ ok: false, error: error.message }) + "\n");
+    process.stdout.write(JSON.stringify({ ok: false, error: error.message, transient: Boolean(error.transient) }) + "\n");
     process.exitCode = 1;
   });
 }

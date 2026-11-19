@@ -23,6 +23,23 @@ typedef NS_ENUM(NSInteger, HDPage) {
   HDPageSettings = 4
 };
 
+// Sparkline of the rolling per-window chat participants with the live MAD threshold.
+// Samples are the recorder's `status` events: participants, threshold, median,
+// reactions, trigger and topEmotes.
+@interface HDChatPulseView : NSView
+- (void)addSample:(NSDictionary *)sample;
+- (void)noteTrigger:(NSDictionary *)info; // participants, topEmotes
+- (void)reset;
+@end
+
+// Mockup of how a 16:9 stream becomes a 9:16 clip: centered-over-blur or stacked split.
+@interface HDLayoutPreviewView : NSView
+@property(copy, nonatomic) NSString *layout;          // "blur" | "split"
+@property(nonatomic) double camHeightRatio;           // 0.20 - 0.50
+@property(copy, nonatomic) NSString *facecamCorner;   // top-left | top-right | bottom-left | bottom-right
+@property(copy) void (^cornerPicked)(NSString *corner);
+@end
+
 @interface HDUI : NSObject
 
 @property(strong, readonly) NSWindow *window;
@@ -104,6 +121,14 @@ typedef NS_ENUM(NSInteger, HDPage) {
 - (void)setSessionState:(HDSessionState)state status:(NSString *)status;
 - (void)setCaptureRunning:(BOOL)running;
 - (NSInteger)vodTopCount;
+- (void)recordChatSample:(NSDictionary *)event;
+- (void)recordChatTrigger:(NSDictionary *)info;
+- (void)resetChatPulse;
+- (void)setReframeLayout:(NSString *)layout camHeightRatio:(double)ratio facecamCorner:(NSString *)corner;
+- (void)showClipPreviewForEntry:(NSDictionary *)entry;
+- (void)stopClipPreview;
 - (void)setLicenseState:(HDLicenseState)state;
+// Free-plan allowance, shown after the session summary on Capture. Pass nil to clear.
+- (void)setPlanNote:(NSString *)note;
 
 @end

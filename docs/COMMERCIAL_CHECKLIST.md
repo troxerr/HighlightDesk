@@ -40,7 +40,7 @@ Status is intentionally honest: unchecked items are launch blockers.
 - [x] x86_64 runtime + app built locally (unsigned)
 - [ ] Signed/notarized x86_64 DMG
 - [ ] Clean-Mac install test
-- [ ] Crash reporting / diagnostics
+- [x] Crash reports written to `crashes/` in the state dir and included in Export Diagnostics (local only; no automatic upload; Objective-C change not yet rebuilt/verified in the app)
 - [ ] Appcast and update test
 
 ## Commerce and legal
@@ -49,14 +49,15 @@ Status is intentionally honest: unchecked items are launch blockers.
 - [x] Lemon Squeezy license API helper
 - [ ] EULA, privacy, terms, refund policy
 - [ ] Copyright/streamer-consent language
-- [ ] Third-party licenses and LGPL source offer
+- [~] Third-party licenses and LGPL source offer: written offer added to `docs/THIRD_PARTY_NOTICES.md`; needs a real support email and the LGPL text shipped in the bundle
 - [ ] Domain, website, checkout, support email
 - [ ] Trademark/brand review
 - [ ] 15-user pilot and paid-pilot gate
 
 ## Test evidence
 
-- [x] 92 Node tests
+- [x] 166 Node tests (includes corrupt-state, disk-full recovery, crash-report and restart/backoff tests)
+- [x] Persistence soak harness (`node tools/soak.js`): 20,000 simulated clips with injected write failures, no lost entries
 - [x] Live local pipeline test
 - [x] Google Drive mock pipeline test
 - [x] Persistent queue retry test
@@ -70,6 +71,6 @@ Status is intentionally honest: unchecked items are launch blockers.
 - [x] History and Getting Started UI verified
 - [x] Real Dropbox/Live Twitch manual pipeline (historical)
 - [ ] 24-hour soak
-- [ ] Network loss / sleep-wake / disk-full tests
+- [~] Disk-full / interrupted-upload / sleep-wake backoff covered for the queue and history store; real network-loss and whole-recorder sleep-wake still need a manual pass
 - [ ] License/update/notarization tests
 - [ ] Clean macOS 13/14/15 matrix

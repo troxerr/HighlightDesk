@@ -10,6 +10,7 @@
 #import <UserNotifications/UserNotifications.h>
 #import "ui/HDUI.h"
 #import "ui/HDSymbols.h"
+#import "license/HDLicenseManager.h"
 
 #if __has_include(<Sparkle/Sparkle.h>)
 #import <Sparkle/Sparkle.h>
@@ -125,7 +126,7 @@ static NSString *const kConfigTemplate =
 "  }\n"
 "}\n";
 
-@interface Desk : NSObject <NSApplicationDelegate, NSWindowDelegate, NSTableViewDataSource, NSTableViewDelegate>
+@interface Desk : NSObject <NSApplicationDelegate, NSWindowDelegate, NSMenuDelegate, NSTableViewDataSource, NSTableViewDelegate>
 @property(strong) HDUI *ui;
 @property(strong) NSWindow *window;
 @property(strong) NSTextField *channel;
@@ -188,6 +189,9 @@ static NSString *const kConfigTemplate =
 #endif
 @property(copy) NSString *licenseAction;
 @property BOOL licenseValid;
+@property(strong, nonatomic) HDLicenseManager *licenseManager;
+@property(copy) NSString *pendingLicenseKey;
+@property BOOL freeTier;
 @property BOOL licenseRequired;
 @property BOOL licenseSilent;
 @property BOOL licenseValidationAttempted;
@@ -215,6 +219,12 @@ static NSString *const kConfigTemplate =
 @property(strong) NSTask *monitorTask;
 @property(strong) NSDictionary *monitorSnapshot;
 @property(strong) NSDictionary *monitorReport;
+@property(strong) NSStatusItem *statusItem;
+@property(strong) NSMenuItem *statusStateItem;
+@property(strong) NSMenuItem *statusToggleItem;
+@property(strong) NSTimer *statusTimer;
+@property(copy) NSString *statusItemSignature;
+@property BOOL suppressPreviewUpdate;
 @end
 
 static NSFont *HDDeskMono(CGFloat size) {
@@ -346,6 +356,7 @@ static NSString *HDByteString(unsigned long long bytes) {
   NSString *mode = [storage[@"mode"] isKindOfClass:[NSString class]] ? storage[@"mode"] : @"local";
   NSString *folder = [storage[@"folder"] isKindOfClass:[NSString class]] ? storage[@"folder"] : @"/Highlight Desk";
   environment[@"HIGHLIGHT_DESK_STORAGE"] = mode;
+  environment[@"HIGHLIGHT_DESK_PLAN"] = self.freeTier ? @"free" : @"pro";
   environment[@"HIGHLIGHT_DESK_CONFIG"] = self.configPath;
   if (self.stateDir.length) environment[@"HIGHLIGHT_DESK_STATE"] = self.stateDir;
 
@@ -377,17 +388,35 @@ static NSString *HDByteString(unsigned long long bytes) {
   return config;
 }
 
-- (NSString *)licenseKeyValue {
+// The key, instance ID and last-validated time live in the Keychain
+// (HDLicenseManager). Older builds kept them in the plaintext config; move them once.
+- (HDLicenseManager *)licenseManager {
+  if (_licenseManager) return _licenseManager;
+  HDLicenseManager *manager = [HDLicenseManager new];
+  __weak typeof(self) weakSelf = self;
+  manager.onStateChange = ^(HDLicenseStanding state) { [weakSelf licenseStateChanged:state]; };
+  _licenseManager = manager;
   NSMutableDictionary *config = [self licenseConfig];
-  NSDictionary *license = config[@"license"];
-  return [license[@"key"] isKindOfClass:[NSString class]] ? license[@"key"] : @"";
+  NSMutableDictionary *legacy = config[@"license"];
+  NSString *legacyKey = [legacy[@"key"] isKindOfClass:[NSString class]] ? legacy[@"key"] : @"";
+  NSString *legacyInstance = [legacy[@"instance"] isKindOfClass:[NSString class]] ? legacy[@"instance"] : @"";
+  if (legacyKey.length && legacyInstance.length) {
+    NSDate *date = [[self licenseDateFormatter] dateFromString:[legacy[@"lastValidatedAt"] isKindOfClass:[NSString class]] ? legacy[@"lastValidatedAt"] : @""];
+    [manager migrateLegacyKey:legacyKey instanceId:legacyInstance lastValidated:date];
+    if (manager.hasCredentials) {
+      legacy[@"key"] = @"";
+      legacy[@"instance"] = @"";
+      legacy[@"lastValidatedAt"] = @"";
+      [self writeConfig:config];
+    }
+  }
+  [manager refresh];
+  return manager;
 }
 
-- (NSString *)licenseInstanceValue {
-  NSMutableDictionary *config = [self licenseConfig];
-  NSDictionary *license = config[@"license"];
-  return [license[@"instance"] isKindOfClass:[NSString class]] ? license[@"instance"] : @"";
-}
+- (NSString *)licenseKeyValue { return self.licenseManager.licenseKey; }
+
+- (NSString *)licenseInstanceValue { return self.licenseManager.instanceId; }
 
 - (BOOL)licenseIsRequired {
   NSString *env = NSProcessInfo.processInfo.environment[@"HIGHLIGHT_DESK_LICENSE_REQUIRED"];
@@ -432,18 +461,37 @@ static NSString *HDByteString(unsigned long long bytes) {
   return MAX(0, total - used);
 }
 
-- (BOOL)licenseValidationFresh {
-  NSMutableDictionary *config = [self licenseConfig];
-  NSString *last = config[@"license"][@"lastValidatedAt"];
-  NSDate *date = [[self licenseDateFormatter] dateFromString:last ?: @""];
-  return date && [[NSDate date] timeIntervalSinceDate:date] <= 14 * 86400;
+// A paid license stays usable offline for 14 days after its last successful validation.
+- (BOOL)licenseValidationFresh { return self.licenseManager.isWithinGrace; }
+
+// Free plan allowance, read from the recorder's usage file (see lib/freetier.js).
+- (NSString *)freeTierNote {
+  if (!self.freeTier) return nil;
+  NSCalendar *calendar = NSCalendar.currentCalendar;
+  calendar.firstWeekday = 2; // Monday
+  NSDate *monday = nil;
+  [calendar rangeOfUnit:NSCalendarUnitWeekOfYear startDate:&monday interval:nil forDate:[NSDate date]];
+  NSDateFormatter *iso = [NSDateFormatter new];
+  iso.locale = [NSLocale localeWithLocaleIdentifier:@"en_US_POSIX"];
+  iso.timeZone = [NSTimeZone timeZoneForSecondsFromGMT:0];
+  iso.dateFormat = @"yyyy-MM-dd'T'HH:mm:ss.SSS'Z'";
+  NSString *dir = self.stateDir.length ? self.stateDir : [NSHomeDirectory() stringByAppendingPathComponent:@"Library/Application Support/Highlight Desk"];
+  NSData *data = [NSData dataWithContentsOfFile:[dir stringByAppendingPathComponent:@"free-tier.json"]];
+  NSDictionary *usage = data ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] : nil;
+  NSInteger used = ([usage isKindOfClass:NSDictionary.class] && [usage[@"weekStart"] isEqual:[iso stringFromDate:monday]]) ? [usage[@"used"] integerValue] : 0;
+  NSInteger left = MAX(0, 3 - used);
+  return left > 0 ? [NSString stringWithFormat:@"Free plan: %ld of 3 clean clips left this week", (long)left] : @"Free plan: new clips are watermarked until Monday";
 }
 
+- (void)refreshFreeTierNote { [self.ui setPlanNote:[self freeTierNote]]; }
+
 - (void)refreshLicenseState {
+  (void)self.licenseManager;  // loads Keychain state and starts Sparkle if already licensed
   self.licenseRequired = [self licenseIsRequired];
   self.trialDays = [self configuredTrialDays];
   if (!self.licenseRequired) {
     self.licenseValid = YES;
+    self.freeTier = NO;
     [self updateLicenseUI];
     return;
   }
@@ -461,6 +509,7 @@ static NSString *HDByteString(unsigned long long bytes) {
   } else {
     self.licenseValid = daysLeft > 0;
   }
+  self.freeTier = !self.licenseValid;
   [self updateLicenseUI];
   if (!self.licenseValid && !self.licenseWindow.isVisible) {
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.6 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
@@ -487,23 +536,33 @@ static NSString *HDByteString(unsigned long long bytes) {
   return value ?: @"";
 }
 
-- (void)storeLicenseKey:(NSString *)key instance:(NSString *)instance {
+- (void)clearLicense {
+  [self.licenseManager clear];
   NSMutableDictionary *config = [self licenseConfig];
   if (!config) return;
   NSMutableDictionary *license = config[@"license"];
-  license[@"key"] = key ?: @"";
-  license[@"instance"] = instance ?: @"";
+  license[@"email"] = @"";
+  license[@"productName"] = @"";
   [self writeConfig:config];
 }
 
-- (void)clearLicense {
-  NSMutableDictionary *config = [self licenseConfig];
-  if (!config) return;
-  NSMutableDictionary *license = config[@"license"];
-  license[@"key"] = @"";
-  license[@"instance"] = @"";
-  license[@"lastValidatedAt"] = @"";
-  [self writeConfig:config];
+// Sparkle only runs while a license is on file and recently validated. Trial and
+// free-plan users do not get automatic update checks.
+- (void)licenseStateChanged:(HDLicenseStanding)state {
+#if HD_SPARKLE
+  BOOL licensed = state == HDLicenseStandingValid;
+  if (licensed && !self.updaterController) {
+    NSString *feed = NSBundle.mainBundle.infoDictionary[@"SUFeedURL"];
+    NSString *edKey = NSBundle.mainBundle.infoDictionary[@"SUPublicEDKey"];
+    if ([feed isKindOfClass:[NSString class]] && feed.length && [edKey isKindOfClass:[NSString class]] && edKey.length) {
+      self.updaterController = [[SPUStandardUpdaterController alloc] initWithStartingUpdater:NO updaterDelegate:nil userDriverDelegate:nil];
+      [self.updaterController.updater setAutomaticallyChecksForUpdates:YES];
+      [self.updaterController startUpdater];
+    }
+  } else if (!licensed && self.updaterController) {
+    [self.updaterController.updater setAutomaticallyChecksForUpdates:NO];
+  }
+#endif
 }
 
 - (void)updateLicenseUI {
@@ -538,7 +597,7 @@ static NSString *HDByteString(unsigned long long bytes) {
     self.licenseStatusLabel.stringValue = [NSString stringWithFormat:@"Trial active: %ld day%@ left. Enter a license key to continue after the trial.", (long)daysLeft, daysLeft == 1 ? @"" : @"s"];
     state = HDLicenseStateTrial;
   } else {
-    self.licenseStatusLabel.stringValue = @"Trial expired. Enter a license key to start capture.";
+    self.licenseStatusLabel.stringValue = [NSString stringWithFormat:@"Free plan: 3 clean clips a week, then clips carry a watermark. Enter a license key to remove it.%@", self.freeTierNote.length ? [NSString stringWithFormat:@" %@.", self.freeTierNote] : @""];
     state = HDLicenseStateExpired;
   }
   self.licenseTrialLabel.stringValue = daysLeft > 0
@@ -564,7 +623,7 @@ static NSString *HDByteString(unsigned long long bytes) {
     window.releasedWhenClosed = NO;
     NSView *view = window.contentView;
 
-    NSTextField *heading = [NSTextField labelWithString:@"Highlight Desk License"];
+    NSTextField *heading = [NSTextField labelWithString:@"Chatclip License"];
     heading.font = [NSFont boldSystemFontOfSize:20];
     heading.frame = NSMakeRect(24, 328, 472, 26);
     [view addSubview:heading];
@@ -636,6 +695,11 @@ static NSString *HDByteString(unsigned long long bytes) {
 
 - (void)runLicenseAction:(NSString *)action silent:(BOOL)silent {
   if (self.licenseTask && self.licenseTask.running) return;
+  if ([action isEqualToString:@"activate"] && ![self licenseProductId].length) {
+    // Without a product ID any Lemon Squeezy key would activate.
+    if (!silent) [self alert:@"Licensing is not configured" info:@"This build has no product ID. Set HDProductId when building the release."];
+    return;
+  }
   NSString *resource = NSBundle.mainBundle.resourcePath;
   NSString *helper = [resource stringByAppendingPathComponent:@"tools/license.js"];
   NSString *node = [resource stringByAppendingPathComponent:@"node"];
@@ -653,13 +717,14 @@ static NSString *HDByteString(unsigned long long bytes) {
   task.arguments = @[helper, @"--action", action];
   NSMutableDictionary *environment = [NSProcessInfo.processInfo.environment mutableCopy];
   environment[@"PATH"] = [[self searchPaths] componentsJoinedByString:@":"];
-  NSString *key = [self licenseKeyValue];
+  // An activation uses the key typed by the user; it is stored only after Lemon Squeezy accepts it.
+  NSString *key = [action isEqualToString:@"activate"] ? (self.pendingLicenseKey ?: @"") : [self licenseKeyValue];
   NSString *instance = [self licenseInstanceValue];
   if (key.length) environment[@"LEMON_LICENSE_KEY"] = key;
   if (instance.length) environment[@"LEMON_INSTANCE_ID"] = instance;
   if ([self licenseProductId].length) environment[@"LEMON_PRODUCT_ID"] = [self licenseProductId];
   if ([self licenseApiBase].length) environment[@"LEMON_API_BASE"] = [self licenseApiBase];
-  environment[@"LEMON_INSTANCE_NAME"] = [NSString stringWithFormat:@"%@ - Highlight Desk", [[NSHost currentHost] localizedName] ?: @"Mac"];
+  environment[@"LEMON_INSTANCE_NAME"] = [HDLicenseManager instanceName];
   task.environment = environment;
 
   NSPipe *stdoutPipe = [NSPipe pipe];
@@ -722,25 +787,32 @@ static NSString *HDByteString(unsigned long long bytes) {
     self.licenseValid = [self licenseTrialDaysLeft] > 0;
   } else if ([action isEqualToString:@"activate"] && [result[@"ok"] boolValue]) {
     NSString *instanceId = [result[@"instanceId"] isKindOfClass:[NSString class]] ? result[@"instanceId"] : @"";
-    if (instanceId.length) {
-      [self storeLicenseKey:[self.licenseKeyField.stringValue stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]] instance:instanceId];
+    if (instanceId.length && self.pendingLicenseKey.length) {
+      [self.licenseManager recordActivationWithKey:self.pendingLicenseKey instanceId:instanceId];
+      self.pendingLicenseKey = nil;
       NSMutableDictionary *config = [self licenseConfig];
       NSMutableDictionary *license = config[@"license"];
-      license[@"lastValidatedAt"] = [[self licenseDateFormatter] stringFromDate:[NSDate date]];
       license[@"email"] = [result[@"customerEmail"] isKindOfClass:[NSString class]] ? result[@"customerEmail"] : @"";
       license[@"productName"] = [result[@"productName"] isKindOfClass:[NSString class]] ? result[@"productName"] : @"";
       [self writeConfig:config];
       self.licenseValid = YES;
     }
   } else if ([action isEqualToString:@"validate"] && ok) {
+    [self.licenseManager recordValidation];
     NSMutableDictionary *config = [self licenseConfig];
-    config[@"license"][@"lastValidatedAt"] = [[self licenseDateFormatter] stringFromDate:[NSDate date]];
     if ([result[@"customerEmail"] isKindOfClass:[NSString class]]) config[@"license"][@"email"] = result[@"customerEmail"];
     [self writeConfig:config];
     self.licenseValid = YES;
   } else if ([action isEqualToString:@"validate"]) {
-    self.licenseValid = [self licenseTrialDaysLeft] > 0;
+    // Offline or a server error says nothing about the key: keep it, and the 14-day grace applies.
+    // Anything else (refunded, revoked, expired, not found) clears the Keychain and locks Pro.
+    BOOL transient = !result || [result[@"transient"] boolValue];
+    if (!transient) [self clearLicense];
+    self.licenseValid = (transient && self.licenseManager.isWithinGrace) || [self licenseTrialDaysLeft] > 0;
   }
+  if ([action isEqualToString:@"activate"]) self.pendingLicenseKey = nil;
+  self.freeTier = self.licenseRequired && !self.licenseValid;
+  [self refreshFreeTierNote];
   [self updateLicenseUI];
   if (!self.licenseSilent) {
     if (success) {
@@ -810,7 +882,7 @@ static NSString *HDByteString(unsigned long long bytes) {
     return;
   }
   self.licenseKeyField.stringValue = key;
-  [self storeLicenseKey:key instance:[self licenseInstanceValue]];
+  self.pendingLicenseKey = key;
   [self runLicenseAction:@"activate" silent:NO];
 }
 
@@ -1136,10 +1208,19 @@ static NSString *HDByteString(unsigned long long bytes) {
   NSArray *queue = queueData ? [NSJSONSerialization JSONObjectWithData:queueData options:0 error:nil] : @[];
   self.queueItems = [queue isKindOfClass:[NSArray class]] ? [queue mutableCopy] : [NSMutableArray array];
   self.queuedCount = self.queueItems.count;
+  NSInteger selectedRow = self.historyTable.selectedRow;
+  NSString *selectedPath = (selectedRow >= 0 && selectedRow < (NSInteger)self.historyItems.count && [self.historyItems[selectedRow][@"localPath"] isKindOfClass:NSString.class]) ? self.historyItems[selectedRow][@"localPath"] : nil;
   self.historyItems = [[self historyRowsFromDisk] mutableCopy];
   NSArray *descriptors = self.historyTable.sortDescriptors;
   if (descriptors.count) [self.historyItems sortUsingDescriptors:descriptors];
+  self.suppressPreviewUpdate = YES;
   [self.historyTable reloadData];
+  if (selectedPath.length) {
+    NSUInteger match = [self.historyItems indexOfObjectPassingTest:^BOOL(NSDictionary *item, NSUInteger idx, BOOL *stop) { return [item[@"localPath"] isEqual:selectedPath]; }];
+    if (match != NSNotFound) [self.historyTable selectRowIndexes:[NSIndexSet indexSetWithIndex:match] byExtendingSelection:NO];
+  }
+  self.suppressPreviewUpdate = NO;
+  [self tableViewSelectionDidChange:[NSNotification notificationWithName:NSTableViewSelectionDidChangeNotification object:self.historyTable]];
   [self.ui setLibraryEmpty:self.historyItems.count == 0];
   [self updateHistoryStatus];
   if (self.ui) {
@@ -1147,10 +1228,30 @@ static NSString *HDByteString(unsigned long long bytes) {
     NSInteger filter = self.ui.clipFilterControl.selectedSegment;
     self.ui.clipSearchField.stringValue = @"";
     self.ui.clipFilterControl.selectedSegment = 0;
-    [self.ui updateRecentClips:[self historyRowsFromDisk]];
+    [self.ui updateRecentClips:[self recentClipCardEntries]];
     self.ui.clipSearchField.stringValue = query;
     self.ui.clipFilterControl.selectedSegment = filter;
   }
+}
+
+// The newest three history rows, enriched with the peak chatter count and top emotes
+// stored in each clip's metadata sidecar, for the Capture page's portrait strip.
+- (NSArray<NSDictionary *> *)recentClipCardEntries {
+  NSArray<NSDictionary *> *rows = [self historyRowsFromDisk];
+  NSMutableArray<NSDictionary *> *result = [NSMutableArray arrayWithCapacity:rows.count];
+  [rows enumerateObjectsUsingBlock:^(NSDictionary *entry, NSUInteger index, BOOL *stop) {
+    if (index >= 3) { [result addObject:entry]; return; }
+    NSString *path = [entry[@"localPath"] isKindOfClass:NSString.class] ? entry[@"localPath"] : @"";
+    NSDictionary *meta = [self metadataForClipPath:path];
+    NSMutableDictionary *copy = [entry mutableCopy];
+    NSNumber *participants = [meta[@"participants"] isKindOfClass:NSNumber.class] ? meta[@"participants"] : nil;
+    NSNumber *messages = [meta[@"messages"] isKindOfClass:NSNumber.class] ? meta[@"messages"] : nil;
+    if (participants.doubleValue > 0) copy[@"peak"] = participants;
+    else if (messages.doubleValue > 0) copy[@"peak"] = messages;
+    if ([meta[@"topEmotes"] isKindOfClass:NSArray.class]) copy[@"topEmotes"] = meta[@"topEmotes"];
+    [result addObject:copy];
+  }];
+  return result;
 }
 
 - (void)showHistory:(id)sender {
@@ -1458,7 +1559,7 @@ static NSString *HDByteString(unsigned long long bytes) {
   dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
     AVURLAsset *asset = [AVURLAsset URLAssetWithURL:[NSURL fileURLWithPath:path] options:nil];
     AVAssetImageGenerator *generator = [[AVAssetImageGenerator alloc] initWithAsset:asset];
-    generator.appliesPreferredTrackTransform = YES; generator.maximumSize = CGSizeMake(160,160);
+    generator.appliesPreferredTrackTransform = YES; generator.maximumSize = CGSizeMake(360,640);
     [generator generateCGImageAsynchronouslyForTime:kCMTimeZero completionHandler:^(CGImageRef cg, CMTime actual, NSError *error) {
       NSImage *image = cg ? [[NSImage alloc] initWithCGImage:cg size:NSZeroSize] : nil;
       NSDictionary *result = image ? @{@"image":image} : @{};
@@ -1504,6 +1605,9 @@ static NSString *HDByteString(unsigned long long bytes) {
 
 - (void)tableViewSelectionDidChange:(NSNotification *)notification {
   self.historyOpenButton.enabled = self.historyTable.selectedRow >= 0;
+  if (self.suppressPreviewUpdate) return;
+  NSInteger row = self.historyTable.selectedRow;
+  [self.ui showClipPreviewForEntry:(row >= 0 && row < (NSInteger)self.historyItems.count) ? self.historyItems[row] : nil];
 }
 
 - (void)openSelectedHistory:(id)sender {
@@ -1573,7 +1677,7 @@ static NSString *HDByteString(unsigned long long bytes) {
 - (void)notifyTitle:(NSString *)title body:(NSString *)body {
   if (!self.notificationsEnabled || !self.notificationsAuthorized) return;
   UNMutableNotificationContent *content = [UNMutableNotificationContent new];
-  content.title = title ?: @"Highlight Desk";
+  content.title = title ?: @"Chatclip";
   content.body = body ?: @"";
   content.sound = [UNNotificationSound defaultSound];
   UNNotificationRequest *request = [UNNotificationRequest requestWithIdentifier:NSUUID.UUID.UUIDString content:content trigger:nil];
@@ -1634,12 +1738,12 @@ static NSString *HDByteString(unsigned long long bytes) {
   NSSavePanel *panel = [NSSavePanel savePanel];
   NSDateFormatter *stamp = [NSDateFormatter new];
   stamp.dateFormat = @"yyyyMMdd-HHmm";
-  panel.nameFieldStringValue = [NSString stringWithFormat:@"HighlightDesk-Diagnostics-%@.zip", [stamp stringFromDate:[NSDate date]]];
+  panel.nameFieldStringValue = [NSString stringWithFormat:@"Chatclip-Diagnostics-%@.zip", [stamp stringFromDate:[NSDate date]]];
   panel.allowedContentTypes = @[[UTType typeWithFilenameExtension:@"zip"]];
   panel.canCreateDirectories = YES;
   [panel beginSheetModalForWindow:self.window completionHandler:^(NSModalResponse response) {
     if (response != NSModalResponseOK || !panel.URL) return;
-    NSString *temp = [NSTemporaryDirectory() stringByAppendingPathComponent:[NSString stringWithFormat:@"HighlightDesk-Diagnostics-%@", NSUUID.UUID.UUIDString]];
+    NSString *temp = [NSTemporaryDirectory() stringByAppendingPathComponent:[NSString stringWithFormat:@"Chatclip-Diagnostics-%@", NSUUID.UUID.UUIDString]];
     NSFileManager *fm = [NSFileManager defaultManager];
     [fm createDirectoryAtPath:temp withIntermediateDirectories:YES attributes:nil error:nil];
 
@@ -1680,6 +1784,9 @@ static NSString *HDByteString(unsigned long long bytes) {
       if ([fm fileExistsAtPath:source]) [fm copyItemAtPath:source toPath:[temp stringByAppendingPathComponent:name] error:nil];
     }
 
+    NSString *crashSource = [self.stateDir stringByAppendingPathComponent:@"crashes"];
+    if ([fm fileExistsAtPath:crashSource]) [fm copyItemAtPath:crashSource toPath:[temp stringByAppendingPathComponent:@"crashes"] error:nil];
+
     NSString *log = [[self.logLines componentsJoinedByString:@"\n"] stringByAppendingString:@"\n"];
     [log writeToFile:[temp stringByAppendingPathComponent:@"app.log"] atomically:YES encoding:NSUTF8StringEncoding error:nil];
 
@@ -1693,7 +1800,7 @@ static NSString *HDByteString(unsigned long long bytes) {
     [runtime addObject:[NSString stringWithFormat:@"codesign:\n%@", [self runDiagnosticCommand:@"/usr/bin/codesign" arguments:@[@"-dv", @"--verbose=2", NSBundle.mainBundle.bundlePath]]]];
     [[runtime componentsJoinedByString:@"\n\n"] writeToFile:[temp stringByAppendingPathComponent:@"runtime.txt"] atomically:YES encoding:NSUTF8StringEncoding error:nil];
 
-    NSString *readme = @"Highlight Desk diagnostics\n\nThis archive may contain local paths, clip history, and error logs. Review it before sharing.\nOAuth tokens, app secrets, and license keys are redacted from config-redacted.json.\n\nSend this zip with a short description of what happened.\n";
+    NSString *readme = @"Chatclip diagnostics\n\nThis archive may contain local paths, clip history, and error logs. Review it before sharing.\nOAuth tokens, app secrets, and license keys are redacted from config-redacted.json.\n\nSend this zip with a short description of what happened.\n";
     [readme writeToFile:[temp stringByAppendingPathComponent:@"README.txt"] atomically:YES encoding:NSUTF8StringEncoding error:nil];
 
     NSString *zip = panel.URL.path;
@@ -1742,7 +1849,7 @@ static NSString *HDByteString(unsigned long long bytes) {
   [self updateLaunchAtLoginState];
   if (error) {
     [self alert:@"Could not update Launch at Login"
-           info:[NSString stringWithFormat:@"%@\n\nMove Highlight Desk to /Applications before enabling this.", error.localizedDescription]];
+           info:[NSString stringWithFormat:@"%@\n\nMove Chatclip to /Applications before enabling this.", error.localizedDescription]];
   }
 }
 
@@ -1770,7 +1877,7 @@ static NSString *HDByteString(unsigned long long bytes) {
     window.releasedWhenClosed = NO;
     NSView *view = window.contentView;
 
-    NSTextField *heading = [NSTextField labelWithString:@"Welcome to Highlight Desk"];
+    NSTextField *heading = [NSTextField labelWithString:@"Welcome to Chatclip"];
     heading.font = [NSFont boldSystemFontOfSize:22];
     heading.frame = NSMakeRect(24, 360, 512, 28);
     [view addSubview:heading];
@@ -1916,7 +2023,7 @@ static NSString *HDByteString(unsigned long long bytes) {
 
   self.stdoutBuffer = [NSMutableString new];
   self.logLines = [NSMutableArray array];
-  [self appendLogLine:[NSString stringWithFormat:@"Highlight Desk %@ (%@) started", NSBundle.mainBundle.infoDictionary[@"CFBundleShortVersionString"] ?: @"?", NSBundle.mainBundle.infoDictionary[@"CFBundleVersion"] ?: @"?"]];
+  [self appendLogLine:[NSString stringWithFormat:@"Chatclip %@ (%@) started", NSBundle.mainBundle.infoDictionary[@"CFBundleShortVersionString"] ?: @"?", NSBundle.mainBundle.infoDictionary[@"CFBundleVersion"] ?: @"?"]];
 
   NSMenu *menu = [NSMenu new];
   NSMenuItem *appItem = [menu addItemWithTitle:@"" action:nil keyEquivalent:@""];
@@ -1955,7 +2062,7 @@ static NSString *HDByteString(unsigned long long bytes) {
   NSMenuItem *licenseItem = [appMenu addItemWithTitle:@"License…" action:@selector(showLicense:) keyEquivalent:@""];
   licenseItem.target = self;
   [appMenu addItem:[NSMenuItem separatorItem]];
-  [appMenu addItemWithTitle:@"Quit Highlight Desk" action:@selector(terminate:) keyEquivalent:@"q"];
+  [appMenu addItemWithTitle:@"Quit Chatclip" action:@selector(terminate:) keyEquivalent:@"q"];
   appItem.submenu = appMenu;
   // Standard responder actions keep text editing and keyboard navigation native.
   NSMenuItem *editItem = [menu addItemWithTitle:@"Edit" action:nil keyEquivalent:@""];
@@ -1976,6 +2083,8 @@ static NSString *HDByteString(unsigned long long bytes) {
   }
   viewItem.submenu = viewMenu;
   NSApp.mainMenu = menu;
+  // The menu bar companion would leak into headless UI review captures and runs.
+  if (!NSProcessInfo.processInfo.environment[@"HIGHLIGHT_DESK_UI_REVIEW"].length) [self installStatusItem];
 
   [self reloadStorageSettings];
   [self reloadHistoryFromDisk];
@@ -2010,6 +2119,7 @@ static NSString *HDByteString(unsigned long long bytes) {
     });
   }
   [self refreshLicenseState];
+  [self refreshFreeTierNote];
   NSString *reviewDirectory = NSProcessInfo.processInfo.environment[@"HIGHLIGHT_DESK_UI_REVIEW"];
   if (reviewDirectory.length) {
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
@@ -2030,8 +2140,100 @@ static NSString *HDByteString(unsigned long long bytes) {
 
 - (void)navigateToPage:(NSMenuItem *)sender { [self.ui selectPage:(HDPage)sender.tag]; }
 
+// MARK: Menu bar live companion
+
+- (void)installStatusItem {
+  if (self.statusItem) return;
+  NSStatusItem *item = [NSStatusBar.systemStatusBar statusItemWithLength:NSVariableStatusItemLength];
+  NSImage *icon = [HDSymbolImage(HDSymbolRoleCapture, 14, NSFontWeightMedium, @"Chatclip") copy];
+  icon.template = YES;
+  item.button.image = icon;
+  item.button.imagePosition = NSImageLeft;
+  item.button.accessibilityLabel = @"Chatclip";
+  item.button.toolTip = @"Chatclip";
+  NSMenu *menu = [[NSMenu alloc] initWithTitle:@"Chatclip"];
+  menu.delegate = self;
+  self.statusStateItem = [menu addItemWithTitle:@"Idle" action:nil keyEquivalent:@""];
+  [menu addItem:[NSMenuItem separatorItem]];
+  NSMenuItem *save = [menu addItemWithTitle:@"Save Highlight" action:@selector(saveHighlight:) keyEquivalent:@"s"];
+  save.keyEquivalentModifierMask = NSEventModifierFlagCommand;
+  save.target = self;
+  NSMenuItem *missed = [menu addItemWithTitle:@"Mark Missed Moment" action:@selector(statusItemMarkMissed:) keyEquivalent:@""];
+  missed.target = self;
+  self.statusToggleItem = [menu addItemWithTitle:@"Start Capture" action:@selector(toggleCapture:) keyEquivalent:@""];
+  self.statusToggleItem.target = self;
+  [menu addItem:[NSMenuItem separatorItem]];
+  NSMenuItem *show = [menu addItemWithTitle:@"Show Chatclip" action:@selector(showMainWindow:) keyEquivalent:@""];
+  show.target = self;
+  item.menu = menu;
+  self.statusItem = item;
+  __weak typeof(self) weakSelf = self;
+  self.statusTimer = [NSTimer scheduledTimerWithTimeInterval:1 repeats:YES block:^(NSTimer *timer) { [weakSelf refreshStatusItem]; }];
+  self.statusTimer.tolerance = 0.5;
+  [self refreshStatusItem];
+}
+
+- (void)refreshStatusItem {
+  if (!self.statusItem) return;
+  BOOL live = self.task.running;
+  BOOL scanning = !live && self.vodTask.running;
+  NSInteger clips = self.clipCount;
+  NSString *state = live ? [NSString stringWithFormat:@"● Live · %ld clip%@", (long)clips, clips == 1 ? @"" : @"s"] : (scanning ? @"Finding highlights…" : @"Idle");
+  NSString *signature = [NSString stringWithFormat:@"%@|%d", state, live];
+  if ([signature isEqualToString:self.statusItemSignature]) return;
+  self.statusItemSignature = signature;
+  self.statusStateItem.title = state;
+  self.statusToggleItem.title = live ? @"Stop Capture" : @"Start Capture";
+  if (live) {
+    NSMutableAttributedString *title = [[NSMutableAttributedString alloc] initWithString:@" ● " attributes:@{NSForegroundColorAttributeName:[NSColor systemRedColor], NSFontAttributeName:[NSFont systemFontOfSize:10]}];
+    [title appendAttributedString:[[NSAttributedString alloc] initWithString:[NSString stringWithFormat:@"Live · %ld", (long)clips] attributes:@{NSFontAttributeName:[NSFont monospacedDigitSystemFontOfSize:12 weight:NSFontWeightMedium]}]];
+    self.statusItem.button.attributedTitle = title;
+  } else {
+    self.statusItem.button.attributedTitle = [[NSAttributedString alloc] initWithString:@""];
+  }
+  self.statusItem.button.accessibilityValue = state;
+}
+
+- (void)menuNeedsUpdate:(NSMenu *)menu {
+  self.statusItemSignature = nil;
+  [self refreshStatusItem];
+}
+
+- (void)statusItemMarkMissed:(id)sender {
+  [self markMissedMoment:sender];
+  self.status.stringValue = @"Missed moment marked for review. Capture continues.";
+}
+
+- (void)showMainWindow:(id)sender {
+  if (self.window.isMiniaturized) [self.window deminiaturize:nil];
+  [self.window makeKeyAndOrderFront:nil];
+  [NSApp activateIgnoringOtherApps:YES];
+}
+
+// MARK: Reframe layout
+
+- (void)reframeSettingsChanged:(NSDictionary *)settings {
+  NSMutableDictionary *config = [self loadConfig];
+  if (!config) return;
+  NSMutableDictionary *reframe = [config[@"reframe"] isKindOfClass:NSMutableDictionary.class] ? config[@"reframe"] : [NSMutableDictionary dictionary];
+  NSString *layout = [settings[@"layout"] isEqual:@"split"] ? @"split" : @"blur";
+  double ratio = MAX(0.20, MIN(0.50, round([settings[@"camHeightRatio"] doubleValue] * 100) / 100));
+  NSString *corner = [@[@"top-left", @"top-right", @"bottom-left", @"bottom-right"] containsObject:settings[@"facecamCorner"]] ? settings[@"facecamCorner"] : @"bottom-left";
+  reframe[@"layout"] = layout;
+  reframe[@"camHeightRatio"] = @(ratio);
+  reframe[@"facecamCorner"] = corner;
+  config[@"reframe"] = reframe;
+  if (![self writeConfig:config]) {
+    [self alert:@"Could not save the layout." info:@"The configuration file could not be written."];
+    return;
+  }
+  [self logUsageEvent:@"reframe-layout" details:@{@"layout": layout, @"camHeightRatio": @(ratio), @"facecamCorner": corner}];
+}
+
 - (BOOL)validateMenuItem:(NSMenuItem *)item {
   if (item.action == @selector(saveHighlight:)) return self.saveButton.enabled;
+  if (item.action == @selector(statusItemMarkMissed:)) return self.task.running && self.monitorSnapshot[@"lastWindow"] != nil;
+  if (item.action == @selector(toggleCapture:)) return self.toggle.enabled && !(self.vodTask.running && !self.task.running);
   if (item.action == @selector(navigateToPage:)) {
     item.state = self.ui.selectedPage == item.tag ? NSControlStateValueOn : NSControlStateValueOff;
   }
@@ -2118,7 +2320,24 @@ static NSString *HDByteString(unsigned long long bytes) {
     [self.ui performSelector:@selector(vodOptionsToggled:) withObject:nil];
   }
   [self.ui setSessionState:HDSessionStateReady status:@""];
+  // Synthetic data so each new surface is visible in review captures. UI only: no recorder, no config writes.
+  if (!vodReview && page == HDPageCapture) {
+    [self.ui resetChatPulse];
+    double series[] = {6,7,5,8,9,7,6,8,10,9,7,8,11,9,8,12,10,9,14,31,36,18,12,10,9,11,8,9,10,13,12,38,44,22,14,11};
+    for (NSUInteger i = 0; i < sizeof(series) / sizeof(series[0]); i++) {
+      BOOL fired = series[i] > 30 && (i == 20 || i == 32);
+      [self.ui recordChatSample:@{@"participants": @(series[i]), @"threshold": @(24), @"median": @(9), @"reactions": @(series[i] / 2), @"trigger": @(fired), @"at": [NSDate dateWithTimeIntervalSinceNow:-5.0 * (36 - (double)i)], @"topEmotes": fired ? @[@{@"name": @"KEKW", @"count": @14}, @{@"name": @"PogChamp", @"count": @9}] : @[]}];
+    }
+    [self.ui recordChatTrigger:@{@"participants": @44, @"topEmotes": @[@{@"name": @"KEKW", @"count": @14}, @{@"name": @"PogChamp", @"count": @9}]}];
+  }
+  if (!vodReview && page == HDPageClips && self.historyItems.count) {
+    [self.historyTable selectRowIndexes:[NSIndexSet indexSetWithIndex:0] byExtendingSelection:NO];
+  }
+  if (!vodReview && page == HDPageStorage) {
+    [self.ui setReframeLayout:dark ? @"split" : @"blur" camHeightRatio:0.35 facecamCorner:@"top-right"];
+  }
   [self.window makeFirstResponder:nil];
+  if (!vodReview && page == HDPageCapture) [self.ui setSessionState:HDSessionStateLive status:@"Chat connected. Highlights are being captured."];
   [self.window makeKeyAndOrderFront:nil]; [NSApp activateIgnoringOtherApps:YES];
   dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.2*NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
     [self.window.contentView layoutSubtreeIfNeeded]; [self.window displayIfNeeded];
@@ -2345,6 +2564,7 @@ static NSString *HDByteString(unsigned long long bytes) {
     }
     NSInteger participants = [event[@"participants"] integerValue];
     NSInteger reactions = [event[@"reactions"] integerValue];
+    if (event[@"participants"] && !self.vodEvents) [self.ui recordChatSample:event];
     if (joined || participants > 0 || reactions > 0) {
       [self logUsageEvent:@"chat-sample" details:@{
         @"joined": @(joined), @"recording": @(recording),
@@ -2379,7 +2599,7 @@ static NSString *HDByteString(unsigned long long bytes) {
     self.status.stringValue = [NSString stringWithFormat:@"Uploading to %@…", self.storageLabel ?: @"storage"];
   } else if ([type isEqualToString:@"review-ready"]) {
     NSString *message = [event[@"message"] isKindOfClass:NSString.class] ? event[@"message"] : @"Open Capture Monitor to review your highlights.";
-    [self notifyTitle:@"Highlight Desk" body:message];
+    [self notifyTitle:@"Chatclip" body:message];
     [self logUsageEvent:@"review-ready" details:@{@"sessions": event[@"sessions"] ?: @0}];
   } else if ([type isEqualToString:@"clip-uploaded"]) {
     if ([event[@"queued"] boolValue]) [self logFeedbackAction:@"uploaded" clipId:event[@"clipId"] details:@{@"provider": event[@"provider"] ?: @"", @"queued": @YES}];
@@ -2409,6 +2629,7 @@ static NSString *HDByteString(unsigned long long bytes) {
     NSDictionary *metadata = [event[@"metadata"] isKindOfClass:[NSDictionary class]] ? event[@"metadata"] : nil;
     NSString *reason = [metadata[@"reason"] isKindOfClass:[NSString class]] ? metadata[@"reason"] : @"highlight";
     NSString *path = [event[@"path"] isKindOfClass:[NSString class]] ? event[@"path"] : nil;
+    if (!self.vodEvents) [self.ui recordChatTrigger:@{@"participants": metadata[@"participants"] ?: @0, @"topEmotes": metadata[@"topEmotes"] ?: @[]}];
     NSString *provider = [event[@"provider"] isKindOfClass:[NSString class]] ? event[@"provider"] : self.storageMode;
     NSString *remotePath = [event[@"remotePath"] isKindOfClass:[NSString class]] ? event[@"remotePath"] : nil;
     if ([event[@"webLink"] isKindOfClass:[NSString class]]) self.lastRemoteURL = event[@"webLink"];
@@ -2462,7 +2683,7 @@ static NSString *HDByteString(unsigned long long bytes) {
     self.status.stringValue = message;
     [self logUsageEvent:@"engine-fatal" details:@{@"message": message ?: @"unknown"}];
     [self.ui setSessionState:HDSessionStateError status:message ?: @"Recorder stopped"];
-    [self alert:@"Highlight Desk stopped." info:message];
+    [self alert:@"Chatclip stopped." info:message];
   }
   if (self.vodEvents && [type isEqualToString:@"clip-saved"]) {
     self.vodSaved += 1;
@@ -2471,7 +2692,9 @@ static NSString *HDByteString(unsigned long long bytes) {
       ? [NSString stringWithFormat:@"Saving clip %ld of %ld", (long)self.vodSaved + 1, (long)total]
       : [NSString stringWithFormat:@"Saved clip %ld of %ld", (long)self.vodSaved, (long)total];
   }
+  if ([type isEqualToString:@"free-tier"] || [type isEqualToString:@"clip-saved"]) [self refreshFreeTierNote];
   [self.ui updateSummaryWithClips:self.clipCount queue:self.queuedCount storage:self.storageLabel trial:self.trialDays];
+  [self refreshStatusItem];
 }
 
 - (void)clipSearchChanged:(id)sender {
@@ -2485,11 +2708,6 @@ static NSString *HDByteString(unsigned long long bytes) {
 - (void)toggleCapture:(id)sender {
   if (!self.task.running && self.vodTask.running) {
     self.status.stringValue = @"Finish or cancel the VOD scan before starting a live capture.";
-    return;
-  }
-  if (!self.task.running && !self.licenseValid) {
-    [self showLicense:nil];
-    [self alert:@"A license is required" info:@"Your trial has ended. Activate a license key to start capturing."];
     return;
   }
   if (self.task.running) {
@@ -2510,7 +2728,7 @@ static NSString *HDByteString(unsigned long long bytes) {
   NSString *resource = NSBundle.mainBundle.resourcePath;
   NSString *background = [resource stringByAppendingPathComponent:@"background.cjs"];
   if (![[NSFileManager defaultManager] fileExistsAtPath:background]) {
-    [self alert:@"Highlight Desk is incomplete." info:@"background.cjs is missing from the app bundle. Rebuild with mac/build.sh."];
+    [self alert:@"Chatclip is incomplete." info:@"background.cjs is missing from the app bundle. Rebuild with mac/build.sh."];
     return;
   }
 
@@ -2644,12 +2862,6 @@ static NSString *HDByteString(unsigned long long bytes) {
     self.status.stringValue = @"Stop the live capture before scanning a VOD.";
     return;
   }
-  if (!self.licenseValid) {
-    [self showLicense:nil];
-    [self alert:@"A license is required" info:@"Your trial has ended. Activate a license key to find highlights."];
-    return;
-  }
-
   NSCharacterSet *space = [NSCharacterSet whitespaceAndNewlineCharacterSet];
   NSString *link = [self.ui.vodField.stringValue stringByTrimmingCharactersInSet:space];
   NSString *startText = [self.ui.vodStartField.stringValue stringByTrimmingCharactersInSet:space];
@@ -2668,7 +2880,7 @@ static NSString *HDByteString(unsigned long long bytes) {
   NSString *resource = NSBundle.mainBundle.resourcePath;
   NSString *script = [resource stringByAppendingPathComponent:@"vod.cjs"];
   if (![[NSFileManager defaultManager] fileExistsAtPath:script]) {
-    [self alert:@"Highlight Desk is incomplete." info:@"vod.cjs is missing from the app bundle. Rebuild with mac/build.sh."];
+    [self alert:@"Chatclip is incomplete." info:@"vod.cjs is missing from the app bundle. Rebuild with mac/build.sh."];
     return;
   }
   NSArray<NSString *> *paths = [self searchPaths];
@@ -2936,6 +3148,11 @@ static NSString *HDByteString(unsigned long long bytes) {
   self.storageKeepLocalCheckbox.state = ([storage[@"keepLocalCopy"] boolValue] || (storage[@"deleteAfterUpload"] && ![storage[@"deleteAfterUpload"] boolValue])) ? NSControlStateValueOn : NSControlStateValueOff;
   self.storageKeepRawCheckbox.state = [storage[@"keepRaw"] boolValue] ? NSControlStateValueOn : NSControlStateValueOff;
   [self updateStorageStatus];
+  NSDictionary *reframe = [config[@"reframe"] isKindOfClass:[NSDictionary class]] ? config[@"reframe"] : nil;
+  NSNumber *ratio = [reframe[@"camHeightRatio"] isKindOfClass:[NSNumber class]] ? reframe[@"camHeightRatio"] : @0.35;
+  [self.ui setReframeLayout:[reframe[@"layout"] isKindOfClass:[NSString class]] ? reframe[@"layout"] : @"blur"
+              camHeightRatio:ratio.doubleValue
+               facecamCorner:[reframe[@"facecamCorner"] isKindOfClass:[NSString class]] ? reframe[@"facecamCorner"] : @"bottom-left"];
   if (self.ui) { [self.ui syncStorageCards]; self.ui.storageSaveButton.enabled = NO; }
 }
 
@@ -3255,7 +3472,7 @@ static NSString *HDByteString(unsigned long long bytes) {
   if (self.vodTask.running && !self.task.running) {
     NSAlert *alert = [NSAlert new];
     alert.messageText = @"Still finding highlights.";
-    alert.informativeText = @"Cancel the VOD scan and quit Highlight Desk?";
+    alert.informativeText = @"Cancel the VOD scan and quit Chatclip?";
     [alert addButtonWithTitle:@"Cancel Scan and Quit"];
     [alert addButtonWithTitle:@"Keep Running"];
     if ([alert runModal] != NSAlertFirstButtonReturn) return NO;
@@ -3265,7 +3482,7 @@ static NSString *HDByteString(unsigned long long bytes) {
   if (self.task.running) {
     NSAlert *alert = [NSAlert new];
     alert.messageText = @"Capture is still running.";
-    alert.informativeText = @"Stop recording and quit Highlight Desk?";
+    alert.informativeText = @"Stop recording and quit Chatclip?";
     [alert addButtonWithTitle:@"Stop and Quit"];
     [alert addButtonWithTitle:@"Keep Running"];
     if ([alert runModal] != NSAlertFirstButtonReturn) return NO;
@@ -3286,6 +3503,8 @@ static NSString *HDByteString(unsigned long long bytes) {
 
 - (void)applicationWillTerminate:(NSNotification *)notification {
   self.quitting = YES;
+  [self.statusTimer invalidate];
+  if (self.statusItem) [NSStatusBar.systemStatusBar removeStatusItem:self.statusItem];
   if (self.task.running) [self.task terminate];
   if (self.vodTask.running) [self.vodTask terminate];
 }

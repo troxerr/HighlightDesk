@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/* Local-only usage audit for Highlight Desk. Writes a Markdown report; sends nothing. */
+/* Local-only usage audit for Chatclip. Writes a Markdown report; sends nothing. */
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
@@ -201,7 +201,7 @@ features.push("**Discord/Slack webhook** or local notification when a clip is re
 features.push("**Per-channel analytics** (clips per hour, best-performing triggers, upload success rate) for done-for-you clipping.");
 features.push("**Local-first privacy mode**: chat samples and diagnostics stay on-device with an explicit export button.");
 
-const markdown = `# Highlight Desk Usage Log
+const markdown = `# Chatclip Usage Log
 
 Generated **${iso(now)}** by \`tools/usage-audit.js\`. Local-only; no data was uploaded.
 

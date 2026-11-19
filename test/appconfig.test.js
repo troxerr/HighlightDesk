@@ -9,6 +9,9 @@ test("default config has reframe and dropbox sections", () => {
   const template = config.defaultConfig();
   assert.equal(template.reframe.width, 1080);
   assert.equal(template.reframe.height, 1920);
+  assert.equal(template.reframe.layout, "blur");
+  assert.equal(template.reframe.camHeightRatio, 0.35);
+  assert.equal(template.reframe.facecamCorner, "bottom-left");
   assert.equal(template.dropbox.deleteAfterUpload, true);
   assert.equal(template.dropbox.folder, "/Highlight Desk");
   assert.equal(template.storage.mode, "local");
@@ -18,7 +21,7 @@ test("default config has reframe and dropbox sections", () => {
 });
 
 test("readConfig handles missing, valid, and invalid files", () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "highlight-desk-config-"));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "chatclip-config-"));
   try {
     const missing = path.join(dir, "missing.json");
     assert.deepEqual(config.readConfig({ filePath: missing }).config, {});
@@ -41,7 +44,7 @@ test("readConfig handles missing, valid, and invalid files", () => {
 });
 
 test("readConfig honors HIGHLIGHT_DESK_CONFIG", () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "highlight-desk-config-"));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "chatclip-config-"));
   try {
     const file = path.join(dir, "custom.json");
     fs.writeFileSync(file, JSON.stringify({ reframe: { blur: 33 } }));
@@ -55,10 +58,37 @@ test("readConfig honors HIGHLIGHT_DESK_CONFIG", () => {
 
 test("reframeSettings clamps and defaults", () => {
   const defaults = config.reframeSettings({});
-  assert.deepEqual(defaults, { enabled: true, width: 1080, height: 1920, crf: 20, preset: "veryfast", blur: 20, encoder: process.platform === "darwin" ? "h264_videotoolbox" : "auto", priority: process.platform === "win32" ? "belowNormal" : "normal", bitrate: "8M" });
+  assert.deepEqual(defaults, {
+    enabled: true,
+    width: 1080,
+    height: 1920,
+    crf: 20,
+    preset: "veryfast",
+    blur: 20,
+    encoder: process.platform === "darwin" ? "h264_videotoolbox" : "auto",
+    priority: process.platform === "win32" ? "belowNormal" : "normal",
+    bitrate: "8M",
+    layout: "blur",
+    camHeightRatio: 0.35,
+    facecamCorner: "bottom-left",
+    facecam: null,
+    gameplay: null
+  });
 
   const custom = config.reframeSettings({
-    reframe: { enabled: false, width: 999, height: 1001, crf: 99, preset: "nope", blur: 999 }
+    reframe: {
+      enabled: false,
+      width: 999,
+      height: 1001,
+      crf: 99,
+      preset: "nope",
+      blur: 999,
+      layout: "split",
+      camHeightRatio: 0.9,
+      facecamCorner: "top-right",
+      facecam: { x: 0.85, y: 0.85, w: 0.5, h: 0.5 },
+      gameplay: { x: 0.1, y: 0.05, w: 0.8, h: 0.9 }
+    }
   });
   assert.equal(custom.enabled, false);
   assert.equal(custom.width % 2, 0);
@@ -66,13 +96,29 @@ test("reframeSettings clamps and defaults", () => {
   assert.equal(custom.crf, 30);
   assert.equal(custom.preset, "veryfast");
   assert.equal(custom.blur, 60);
+  assert.equal(custom.layout, "split");
+  assert.equal(custom.camHeightRatio, 0.5);
+  assert.equal(custom.facecamCorner, "top-right");
+  assert.deepEqual(custom.facecam, { x: 0.85, y: 0.85, w: 0.15, h: 0.15 });
+  assert.deepEqual(custom.gameplay, { x: 0.1, y: 0.05, w: 0.8, h: 0.9 });
 
   assert.equal(config.reframeSettings({ reframe: { priority: "belowNormal" } }, {}).priority, "belowNormal");
   assert.equal(config.reframeSettings({ reframe: { priority: "normal" } }, {}).priority, "normal");
   assert.equal(config.reframeSettings({ reframe: { priority: "nope" } }, { HIGHLIGHT_DESK_PRIORITY: "belowNormal" }).priority, "belowNormal");
 
-  const env = config.reframeSettings({ reframe: { enabled: true } }, { HIGHLIGHT_DESK_REFRAME: "0" });
+  const invalidSplit = config.reframeSettings({
+    reframe: { layout: "unknown", camHeightRatio: 0.05, facecamCorner: "center" }
+  });
+  assert.equal(invalidSplit.layout, "blur");
+  assert.equal(invalidSplit.camHeightRatio, 0.2);
+  assert.equal(invalidSplit.facecamCorner, "bottom-left");
+
+  const env = config.reframeSettings(
+    { reframe: { enabled: true, layout: "blur" } },
+    { HIGHLIGHT_DESK_REFRAME: "0", HIGHLIGHT_DESK_REFRAME_LAYOUT: "split" }
+  );
   assert.equal(env.enabled, false);
+  assert.equal(env.layout, "split");
 });
 
 test("storage defaults to local and preserves legacy Dropbox configuration", () => {
