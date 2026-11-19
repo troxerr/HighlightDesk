@@ -7,6 +7,14 @@ electronVersion: 45.3.4
 directories:
   app: stage
   output: dist
+# The recorder imports these modules from resources/app/dist. A separate
+# FileSet keeps the output-directory exclusion from dropping them.
+files:
+  - "**/*"
+  - from: dist
+    to: dist
+    filter:
+      - "**/*"
 asar: false
 npmRebuild: false
 icon: stage/icon.png
