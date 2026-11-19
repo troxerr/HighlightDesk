@@ -99,7 +99,7 @@ function main() {
   function createWindow() {
     win = new BrowserWindow({
       width: 1100, height: 720, minWidth: 760, minHeight: 560,
-      title: "Highlight Desk",
+      title: "ChatClip",
       backgroundColor: nativeTheme.shouldUseDarkColors ? "#15131a" : "#f6f5fb",
       webPreferences: {
         preload: path.join(__dirname, "..", "preload.js"),

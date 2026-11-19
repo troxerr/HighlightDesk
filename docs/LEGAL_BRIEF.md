@@ -87,7 +87,7 @@ Questions: Does selling mode (a) or (c) expose me to Twitch's terms or to claims
 - The privacy text mentions opt-in crash reports (not built), and I need correct GDPR/UK GDPR and CCPA wording given there is no server and I act mostly as a software vendor. Is a data-processing or cookie notice needed for a download site?
 - Refunds are handled through Lemon Squeezy's checkout policy; I need terms that match it, and EU/UK consumer-right wording for digital downloads and the trial.
 - Do I need an age restriction (Twitch requires 13+), a limitation of liability, and a disclaimer that clips may infringe third-party rights?
-- Trademark: the name "Highlight Desk" has not been searched. **[not verified]**
+- Trademark: the name "ChatClip" (formerly Highlight Desk) has not been searched for trademark conflicts. **[not verified]**
 
 ## 7. Attach
 
