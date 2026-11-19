@@ -21,6 +21,7 @@ This file is checked against the code by `test/protocol-doc.test.js`: every even
 | `HIGHLIGHT_DESK_STATE` | State folder (queue, history, feedback, models). Default per OS, see `lib/platform.js`. |
 | `HIGHLIGHT_DESK_OUTPUT` | Clip output root. Default per OS. |
 | `HIGHLIGHT_DESK_INPUT` | Use a local video file instead of Streamlink (development and tests). |
+| `HIGHLIGHT_DESK_SMOKE` | Windows smoke output folder. When combined with `HIGHLIGHT_DESK_INPUT`, the recorder uses a deterministic chat spike in place of live Twitch chat. |
 | `HIGHLIGHT_DESK_KEYCHAIN=0` | Do not read the OS credential store. |
 | `HIGHLIGHT_DESK_PRIORITY` | `normal` or `belowNormal` CPU priority for the export and 9:16 encodes (default: `belowNormal` on Windows, `normal` elsewhere). The live recorder is always at normal priority. |
 
@@ -34,6 +35,7 @@ One JSON object per line. Every event has `type` and `at` (ISO timestamp). `back
 |---|---|---|
 | `ready` | Capture is set up | `channel`, `output`, `temp`, `version`, `sessionId`, `profileVersion`, `settings`, `reframe`, `storage` |
 | `status` | Every sampling tick, and on state changes | `recording`, `joined`, `mediaTime`, `participants`, `reactions`, `messages`, `score`, `threshold`, `trigger`, `reasons`; also `exporting`/`target` while exporting, `stopping` while shutting down, `emotes`/`channelEmotes` after emote loads |
+| `free-tier` | The free plan is active (no valid license) | Weekly allowance from `lib/freetier.js`: how many clean clips remain this week before clips are watermarked. Emitted by both `background.cjs` and `vod.cjs`. |
 | `clip-requested` | A clip was triggered | `clipId`, `reason`, `trigger` (`auto`, `manual`, `command`, `raid`), `center`, `participants` |
 | `clip-exported` | The landscape clip was written | `path`, `sidecar`, `metadata` |
 | `clip-reframed` | The 9:16 clip was written | `path`, `width`, `height`, `sidecar` |

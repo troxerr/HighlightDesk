@@ -15,8 +15,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-APP_DIR="$ROOT/mac/build/Highlight Desk.app"
-ENTITLEMENTS="$ROOT/mac/HighlightDesk.entitlements"
+APP_DIR="$ROOT/mac/build/Chatclip.app"
+ENTITLEMENTS="$ROOT/mac/Chatclip.entitlements"
 IDENTITY="${DEVELOPER_ID_APPLICATION:-}"
 NOTARY_PROFILE="${NOTARY_PROFILE:-}"
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$ROOT/mac/Info.plist" 2>/dev/null || echo 0.0.0)"
@@ -37,7 +37,7 @@ if [[ "${1:-}" == "--check" ]]; then
   else
     fail "Developer ID signing identity not installed"
   fi
-  [[ -n "$NOTARY_PROFILE" || ( -n "${APPLE_ID:-}" && -n "${TEAM_ID:-}" && -n "${APP_PASSWORD:-}" ) ]] && pass "notary credentials configured" || fail "NOTARY_PROFILE or Apple ID credentials not configured"
+  [[ -n "$NOTARY_PROFILE" || ( -n "${APPLE_API_KEY_PATH:-}" && -n "${APPLE_API_KEY_ID:-}" && -n "${APPLE_API_ISSUER_ID:-}" ) || ( -n "${APPLE_ID:-}" && -n "${TEAM_ID:-}" && -n "${APP_PASSWORD:-}" ) ]] && pass "notary credentials configured" || fail "NOTARY_PROFILE or Apple ID credentials not configured"
   [[ -x "$ROOT/mac/runtime/$ARCH/bin/ffmpeg" ]] && pass "bundled FFmpeg ($ARCH)" || fail "bundled FFmpeg missing for $ARCH (run tools/build-runtime.sh)"
   [[ -x "$ROOT/mac/runtime/$ARCH/bin/streamlink" ]] && pass "bundled Streamlink ($ARCH)" || fail "bundled Streamlink missing for $ARCH"
   [[ -d "$APP_DIR/Contents/Frameworks/Sparkle.framework" ]] && pass "Sparkle framework embedded" || fail "Sparkle framework missing"
@@ -107,22 +107,24 @@ echo "Signing the app…"
 codesign --force --options runtime --timestamp --sign "$IDENTITY" --entitlements "$ENTITLEMENTS" "$APP_DIR"
 codesign --verify --deep --strict --verbose=2 "$APP_DIR"
 
-STAGE="$(mktemp -d "${TMPDIR:-/tmp}/highlight-desk-dmg.XXXXXX")"
+STAGE="$(mktemp -d "${TMPDIR:-/tmp}/chatclip-dmg.XXXXXX")"
 trap 'rm -rf "$STAGE"' EXIT
 cp -R "$APP_DIR" "$STAGE/"
 ln -s /Applications "$STAGE/Applications"
-DMG="$ROOT/mac/build/Highlight Desk-$VERSION-$ARCH.dmg"
+DMG="$ROOT/mac/build/Chatclip-$VERSION-$ARCH.dmg"
 rm -f "$DMG"
-hdiutil create -volname "Highlight Desk" -srcfolder "$STAGE" -ov -format UDZO "$DMG" >/dev/null
+hdiutil create -volname "Chatclip" -srcfolder "$STAGE" -ov -format UDZO "$DMG" >/dev/null
 codesign --force --sign "$IDENTITY" "$DMG"
 
 echo "Notarizing $DMG…"
 if [[ -n "$NOTARY_PROFILE" ]]; then
   xcrun notarytool submit "$DMG" --keychain-profile "$NOTARY_PROFILE" --wait
+elif [[ -n "${APPLE_API_KEY_PATH:-}" && -n "${APPLE_API_KEY_ID:-}" && -n "${APPLE_API_ISSUER_ID:-}" ]]; then
+  xcrun notarytool submit "$DMG" --key "$APPLE_API_KEY_PATH" --key-id "$APPLE_API_KEY_ID" --issuer "$APPLE_API_ISSUER_ID" --wait
 elif [[ -n "${APPLE_ID:-}" && -n "${TEAM_ID:-}" && -n "${APP_PASSWORD:-}" ]]; then
   xcrun notarytool submit "$DMG" --apple-id "$APPLE_ID" --team-id "$TEAM_ID" --password "$APP_PASSWORD" --wait
 else
-  echo "Set NOTARY_PROFILE, or APPLE_ID + TEAM_ID + APP_PASSWORD." >&2
+  echo "Set NOTARY_PROFILE, APPLE_API_KEY_PATH + APPLE_API_KEY_ID + APPLE_API_ISSUER_ID, or APPLE_ID + TEAM_ID + APP_PASSWORD." >&2
   echo "DMG created but not notarized: $DMG" >&2
   exit 1
 fi
@@ -131,9 +133,9 @@ xcrun stapler staple "$DMG"
 xcrun stapler validate "$DMG"
 spctl -a -t open --context context:primary-signature -vv "$DMG"
 
-MOUNT="$(mktemp -d "${TMPDIR:-/tmp}/highlight-desk-mount.XXXXXX")"
+MOUNT="$(mktemp -d "${TMPDIR:-/tmp}/chatclip-mount.XXXXXX")"
 hdiutil attach "$DMG" -nobrowse -mountpoint "$MOUNT" >/dev/null
-spctl -a -t exec -vv "$MOUNT/Highlight Desk.app"
+spctl -a -t exec -vv "$MOUNT/Chatclip.app"
 hdiutil detach "$MOUNT" >/dev/null
 rmdir "$MOUNT" 2>/dev/null || true
 
@@ -142,6 +144,6 @@ echo "Release DMG: $DMG"
 if [[ -n "${SU_FEED_URL:-}" && -n "${SPARKLE_PUBLIC_KEY:-}" ]]; then
   echo "Sparkle feed URL configured: $SU_FEED_URL"
   echo "Generate/sign the appcast with:"
-  echo "  VERSION=$VERSION BUILD=$BUILD DOWNLOAD_URL=<public dmg url> DMG=\"$DMG\" ./tools/make-appcast.sh"
+  echo "  VERSION=$VERSION BUILD=<CFBundleVersion> DOWNLOAD_URL=<public dmg url> DMG=\"$DMG\" ./tools/make-appcast.sh"
   echo "and set SUFeedURL=$SU_FEED_URL, SUPublicEDKey=$SPARKLE_PUBLIC_KEY at build time."
 fi

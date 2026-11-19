@@ -24,6 +24,11 @@ const SMOKE = process.env.HIGHLIGHT_DESK_SMOKE || "";
 const ROOT = path.join(__dirname, "..", "..");
 const INDEX = path.join(__dirname, "..", "renderer", "index.html");
 
+// Keep the Electron profile across the product rename.
+const userData = SMOKE ? path.join(SMOKE, "electron") : path.join(app.getPath("appData"), "Highlight Desk");
+fs.mkdirSync(userData, { recursive: true });
+app.setPath("userData", userData);
+
 if (SMOKE) {
   // Self-test runs keep everything inside the given folder and need no GPU.
   fs.mkdirSync(SMOKE, { recursive: true });

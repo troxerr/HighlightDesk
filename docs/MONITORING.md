@@ -1,6 +1,6 @@
 # Capture monitoring and learning
 
-Open **Monitor…** on Capture, or **Highlight Desk → Capture Monitor…** (Command–Shift–M).
+Open **Monitor…** on Capture, or **Chatclip → Capture Monitor…** (Command–Shift–M).
 Monitoring starts with every live capture in this build. A previously running build must finish its session before switching; changing source does not instrument an already running recorder.
 
 ## What is recorded

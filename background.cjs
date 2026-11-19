@@ -21,8 +21,10 @@ const { parseManifest, planClip } = require("./lib/manifest.js");
 const { readConfig, reframeSettings, storageSettings } = require("./lib/appconfig.js");
 const { createStorageProvider, storageLabel } = require("./lib/storage/index.js");
 const { createJobStore } = require("./lib/jobstore.js");
+const { writeCrashReport } = require("./lib/crashlog.js");
 const { exportClip, writeSidecar, killAll: killExports } = require("./lib/exporter.js");
 const { reframeClip, killAll: killReframes } = require("./lib/reframe.js");
+const freeTier = require("./lib/freetier.js");
 
 const VERSION = "3.0.0";
 const settings = settingsFor("desktop");
@@ -63,9 +65,11 @@ try {
   console.error(`Could not create the clip folder (${output}): ${error.message}`);
   process.exit(1);
 }
-const temp = fs.mkdtempSync(path.join(os.tmpdir(), "highlight-desk-"));
+const temp = fs.mkdtempSync(path.join(os.tmpdir(), "chatclip-"));
 const manifestFile = path.join(temp, "segments.csv");
 const EVENTS = process.env.HIGHLIGHT_DESK_EVENTS === "1";
+const smokeChat = streamSource.platform === "twitch" && Boolean(process.env.HIGHLIGHT_DESK_SMOKE && process.env.HIGHLIGHT_DESK_INPUT);
+let smokeSpikeSent = false;
 
 let chat = null;
 let source = null;
@@ -727,9 +731,14 @@ async function runPipeline(job, plan, rawTarget) {
   if (reframeConfig.enabled) {
     const base = path.basename(rawTarget, ".mp4");
     verticalTarget = uniquePath(output, `${base}-9x16.mp4`);
+    // Free plan: after the weekly allowance, clips carry a watermark.
+    const tier = freeTier.status({ dir: jobStore.stateDir });
+    const watermark = tier.watermark ? freeTier.prepareWatermark() : null;
+    if (tier.watermark && !watermark) emit("error", { message: "Could not prepare the free-plan watermark. Saving this clip without it." });
     const reframe = await reframeClip({
       input: rawTarget,
       output: verticalTarget,
+      watermark,
       width: reframeConfig.width,
       height: reframeConfig.height,
       crf: reframeConfig.crf,
@@ -737,6 +746,11 @@ async function runPipeline(job, plan, rawTarget) {
       blur: reframeConfig.blur,
       encoder: reframeConfig.encoder,
       bitrate: reframeConfig.bitrate,
+      layout: reframeConfig.layout,
+      camHeightRatio: reframeConfig.camHeightRatio,
+      facecamCorner: reframeConfig.facecamCorner,
+      facecam: reframeConfig.facecam,
+      gameplay: reframeConfig.gameplay,
       priority: reframeConfig.priority
     });
     if (!reframe.ok) {
@@ -757,6 +771,9 @@ async function runPipeline(job, plan, rawTarget) {
     }
     reframed = true;
     metadata.reframed = true;
+    metadata.watermarked = Boolean(watermark);
+    if (tier.plan === "free" && !tier.watermark) freeTier.recordClip({ dir: jobStore.stateDir });
+    if (tier.plan === "free") emit("free-tier", freeTier.status({ dir: jobStore.stateDir }));
     metadata.vertical = {
       file: path.basename(verticalTarget),
       width: reframeConfig.width,
@@ -998,6 +1015,13 @@ async function tick() {
       maybeExport(true).catch(error => emit("error", { message: `Exporter: ${error.message}` }));
     }
 
+    if (smokeChat && !smokeSpikeSent && mediaTime >= settings.preRollSec && paceHistory.length >= settings.warmupWindows) {
+      smokeSpikeSent = true;
+      for (let i = 0; i < 12; i += 1) {
+        handleChatLine(`:smoke_user${i}!user@localhost PRIVMSG #${channel} :Pog that was insane`);
+      }
+    }
+
     const windowParticipants = viewers.size;
     const windowReactions = reactors.size;
     const windowMessages = messageCount;
@@ -1045,6 +1069,7 @@ async function tick() {
       paceHistory.push(windowParticipants);
       if (paceHistory.length > settings.historyLimit) paceHistory.shift();
     }
+    const windowEmotes = topEmotes(emoteCounts);
     viewers.clear();
     reactors.clear();
     emoteCounts.clear();
@@ -1064,6 +1089,7 @@ async function tick() {
       reactionFloor: reactionResult ? reactionResult.reactionFloor : 0,
       trigger: reactionResult ? reactionResult.trigger : false,
       reasons: reactionResult ? reactionResult.reasons : [],
+      topEmotes: windowEmotes,
       pending: Boolean(pending),
       exporting: Boolean(exporting),
       clips: clipCount
@@ -1258,9 +1284,17 @@ function start() {
   jobStore.recover();
   emitQueue();
   emitHistory();
+  if (freeTier.currentPlan() === "free") emit("free-tier", freeTier.status({ dir: jobStore.stateDir }));
   if (jobStore.disabled) emit("error", { message: `Could not write the upload queue at ${jobStore.stateDir}; retries will not survive restart.` });
   record();
-  connect();
+  if (smokeChat) {
+    // Exercise chat parsing and scoring without relying on Twitch in CI.
+    settings.warmupWindows = 3;
+    settings.sampleMs = 1000;
+    handleChatLine(`:tmi.twitch.tv 366 smoke_user #${channel} :End of /NAMES list`);
+  } else {
+    connect();
+  }
   ticker = setInterval(tick, settings.sampleMs);
   emoteTimer = setInterval(() => {
     if (room) getEmotes(room).catch((error) => emit("error", { message: `7TV: ${error.message}` }));
@@ -1281,7 +1315,6 @@ process.on("SIGUSR1", () => {
     mediaTime: lastWindow.mediaTime, windowId: lastWindow.id }, { dir: jobStore.stateDir });
   emit("missed-moment", { message: "Marked this moment for review. No extra clip was created." });
 });
-
 // Windows has no SIGUSR1/2, so a host app can send newline-delimited commands
 // on stdin instead (HIGHLIGHT_DESK_COMMANDS=1): "save", "missed", "stop".
 if (process.env.HIGHLIGHT_DESK_COMMANDS === "1") {
@@ -1295,12 +1328,25 @@ if (process.env.HIGHLIGHT_DESK_COMMANDS === "1") {
     if (handler) handler();
   }).on("close", () => { if (!stopping) shutdown(0); });
 }
+
+function recordCrash(kind, error) {
+  const file = writeCrashReport({
+    dir: jobStore.stateDir,
+    kind,
+    error,
+    version: require("./package.json").version,
+    context: { channel: typeof channel === "string" ? channel : "", queued: (() => { try { return jobStore.listQueue().length; } catch { return -1; } })() }
+  });
+  return file;
+}
 process.on("uncaughtException", (error) => {
-  emit("fatal", { message: error.stack || error.message });
+  const file = recordCrash("uncaughtException", error);
+  emit("fatal", { message: (error && (error.stack || error.message)) || String(error), crashReport: file || undefined });
   shutdown(1);
 });
 process.on("unhandledRejection", (error) => {
-  emit("fatal", { message: error && error.stack ? error.stack : String(error) });
+  const file = recordCrash("unhandledRejection", error);
+  emit("fatal", { message: error && error.stack ? error.stack : String(error), crashReport: file || undefined });
   shutdown(1);
 });
 process.stdout.on("error", () => {});

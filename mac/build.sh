@@ -5,7 +5,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 BUILD_DIR="${BUILD_DIR:-$ROOT/mac/build}"
-APP_DIR="$BUILD_DIR/Highlight Desk.app"
+APP_DIR="$BUILD_DIR/Chatclip.app"
 NODE_BIN="${NODE_BIN:-$(command -v node || true)}"
 ARCH="${ARCH:-$(uname -m)}"
 
@@ -39,7 +39,7 @@ SPARKLE="$ROOT/mac/vendor/Sparkle.framework"
 if [[ -d "$SPARKLE" ]]; then
   SPARKLE_FLAGS=(-F "$ROOT/mac/vendor" -framework Sparkle -Wl,-rpath,@executable_path/../Frameworks)
 fi
-clang -arch "$ARCH" -fobjc-arc -framework Cocoa -framework QuartzCore -framework Security -framework UniformTypeIdentifiers -framework ServiceManagement -framework UserNotifications -framework AVFoundation -framework CoreMedia "${SPARKLE_FLAGS[@]}" "$ROOT/mac/main.m" "$ROOT/mac/ui/HDUI.m" "$ROOT/mac/ui/HDSymbols.m" -o "$APP_DIR/Contents/MacOS/HighlightDesk"
+clang -arch "$ARCH" -fobjc-arc -framework Cocoa -framework QuartzCore -framework Security -framework UniformTypeIdentifiers -framework ServiceManagement -framework IOKit -framework UserNotifications -framework AVFoundation -framework AVKit -framework CoreMedia "${SPARKLE_FLAGS[@]}" "$ROOT/mac/main.m" "$ROOT/mac/ui/HDUI.m" "$ROOT/mac/ui/HDSymbols.m" "$ROOT/mac/license/HDKeychain.m" "$ROOT/mac/license/HDLicenseManager.m" -o "$APP_DIR/Contents/MacOS/Chatclip"
 cp "$ROOT/mac/Info.plist" "$APP_DIR/Contents/Info.plist"
 if [[ -n "${DROPBOX_APP_KEY:-}" ]]; then
   /usr/libexec/PlistBuddy -c "Set :HDDropboxAppKey $DROPBOX_APP_KEY" "$APP_DIR/Contents/Info.plist" 2>/dev/null || /usr/libexec/PlistBuddy -c "Add :HDDropboxAppKey string $DROPBOX_APP_KEY" "$APP_DIR/Contents/Info.plist"
@@ -82,7 +82,8 @@ cp "$ROOT/tools/oauth-bridge.js" "$ROOT/tools/license.js" "$ROOT/tools/review-ex
 cp "$ROOT/dist/config.js" "$ROOT/dist/irc.js" "$ROOT/dist/reactions.js" "$APP_DIR/Contents/Resources/dist/"
 cp "$ROOT/lib/manifest.js" "$ROOT/lib/exporter.js" "$ROOT/lib/appconfig.js" "$ROOT/lib/reframe.js" "$ROOT/lib/encoder.js" "$ROOT/lib/dropbox.js" "$ROOT/lib/google-drive.js" "$ROOT/lib/jobstore.js" "$ROOT/lib/twitch-vod.js" "$ROOT/lib/vodscan.js" "$ROOT/lib/overlays.js" "$ROOT/lib/captions.js" "$ROOT/lib/feedback.js" "$APP_DIR/Contents/Resources/lib/"
 cp -R "$ROOT/lib/storage" "$APP_DIR/Contents/Resources/lib/"
-cp "$ROOT/lib/stream-source.js" "$ROOT/lib/kick-chat.js" "$APP_DIR/Contents/Resources/lib/"
+cp "$ROOT/lib/stream-source.js" "$ROOT/lib/kick-chat.js" "$ROOT/lib/freetier.js" "$APP_DIR/Contents/Resources/lib/"
+cp -R "$ROOT/lib/assets" "$APP_DIR/Contents/Resources/lib/"
 cp "$ROOT/lib/monitor.js" "$ROOT/lib/monitor-worker.js" "$ROOT/lib/monitor-policy.js" "$APP_DIR/Contents/Resources/lib/"
 cp "$ROOT/tools/monitor.js" "$APP_DIR/Contents/Resources/tools/"
 if lipo -info "$NODE_BIN" 2>/dev/null | grep -q 'Architectures in the fat file'; then
@@ -108,7 +109,9 @@ else
   echo "warning: Sparkle.framework not found; auto-update is disabled." >&2
 fi
 
-if [[ -f "$ROOT/mac/icon.png" ]]; then
+if [[ -d "$ROOT/Icon/AppIcon.icon" ]] && "$ROOT/tools/make_icon.sh" "$BUILD_DIR/icon" >/dev/null 2>&1; then
+  cp "$BUILD_DIR/icon/Assets.car" "$BUILD_DIR/icon/AppIcon.icns" "$APP_DIR/Contents/Resources/"
+elif [[ -f "$ROOT/mac/icon.png" ]]; then
   ICONSET="$BUILD_DIR/AppIcon.iconset"
   rm -rf "$ICONSET"
   mkdir -p "$ICONSET"

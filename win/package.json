@@ -1,7 +1,8 @@
 {
-  "name": "chatclip-windows",
+  "name": "highlight-desk-windows",
   "version": "0.1.0",
   "private": true,
+  "productName": "ChatClip",
   "description": "ChatClip for Windows",
   "author": "ChatClip",
   "scripts": {

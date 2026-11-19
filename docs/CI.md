@@ -23,3 +23,7 @@ The signed/notarized release is deliberately manual. Use `./mac/release.sh --che
 - Unsigned artifacts are for QA only. They will be blocked by Gatekeeper on another Mac.
 - `tools/package-unsigned.sh` can create QA zips or DMGs; DMG creation needs an unsandboxed runner with `hdiutil`.
 - Never add a Sparkle private key, Lemon Squeezy secret, OAuth client secret, or Developer ID certificate to the repository. Use CI secrets and `tools/fetch-sparkle.sh`-style pinned downloads.
+
+## Release workflow
+
+The signed release workflow lives in the public runner repo [troxerr/chatclip-release](https://github.com/troxerr/chatclip-release) (manual dispatch with a tag; it checks out this private repo with a read-only deploy key) and uploads signed, notarized builds to private R2 storage. See [RELEASE.md](RELEASE.md) for secrets and setup. `build.yml` remains the unsigned QA build.

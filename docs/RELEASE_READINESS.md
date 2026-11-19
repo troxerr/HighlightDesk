@@ -1,4 +1,4 @@
-# Highlight Desk 3.0 readiness report
+# Chatclip 3.0 readiness report
 
 Date: 2026-11-15 · Version: 3.0.0 · Status: **blocked on external launch credentials**
 
@@ -6,7 +6,9 @@ Date: 2026-11-15 · Version: 3.0.0 · Status: **blocked on external launch crede
 
 | Area | Evidence |
 |---|---|
-| Node tests | 92/92 pass (`npm test`) |
+| Node tests | 166/166 pass (`npm test`), re-run 2026-11-17 |
+| Persistence hardening | Corrupt state files are quarantined, failed writes keep memory authoritative and self-heal, no truncated drafts; `tools/soak.js` passes |
+| Crash reports | `lib/crashlog.js` writes bounded reports on uncaught errors; included in diagnostics zip (app rebuild not yet verified) |
 | Arm64 media | 8/8 exporter/reframe tests pass with `mac/runtime/arm64/bin` |
 | x86_64 media | 8/8 exporter/reframe tests pass with `mac/runtime/x86_64/bin` |
 | Arm64 app | Builds, embeds Sparkle + runtime, deep code-sign verifies |
@@ -24,11 +26,11 @@ Date: 2026-11-15 · Version: 3.0.0 · Status: **blocked on external launch crede
 
 Artifacts:
 
-- `mac/build/Highlight Desk.app` (arm64, ad-hoc)
-- `mac/build/Highlight Desk x86_64.app` (x86_64, ad-hoc)
-- `mac/build/HighlightDesk-3.0.0-arm64-unsigned.dmg`
-- `mac/build/HighlightDesk-3.0.0-x86_64-unsigned.dmg`
-- `mac/build/HighlightDesk-3.0.0-*.zip`
+- `mac/build/Chatclip.app` (arm64, ad-hoc)
+- `mac/build/Chatclip x86_64.app` (x86_64, ad-hoc)
+- `mac/build/Chatclip-3.0.0-arm64-unsigned.dmg`
+- `mac/build/Chatclip-3.0.0-x86_64-unsigned.dmg`
+- `mac/build/Chatclip-3.0.0-*.zip`
 
 ## External blockers
 

@@ -57,7 +57,7 @@ NOTARY_PROFILE="highlightdesk-notary" \
 
 `--check` verifies the signing identity, notary credentials, bundled runtime, Sparkle, appcast public key, license product/checkout, and OAuth client IDs without signing anything. Unsigned CI artifacts are built by [docs/CI.md](CI.md).
 
-`mac/release.sh` signs nested Node/FFmpeg/Streamlink binaries and frameworks, signs the app with hardened runtime and `mac/HighlightDesk.entitlements`, builds a DMG, submits it to `notarytool`, staples it, and verifies Gatekeeper.
+`mac/release.sh` signs nested Node/FFmpeg/Streamlink binaries and frameworks, signs the app with hardened runtime and `mac/Chatclip.entitlements`, builds a DMG, submits it to `notarytool`, staples it, and verifies Gatekeeper.
 
 Before release, confirm:
 
@@ -92,3 +92,16 @@ A release is not complete without:
 - Legal docs and pilot evidence are not present.
 
 Do not sell until these are resolved and the pilot gate in the commercial plan passes.
+
+## Automated release (GitHub Actions → Cloudflare R2)
+
+The release workflow lives in the separate public repo [troxerr/chatclip-release](https://github.com/troxerr/chatclip-release), which holds no source and exists only to get free macOS minutes. Tag the release here (`git tag v3.1.0 && git push origin v3.1.0`), then run **Actions → release → Run workflow** there with `ref = v3.1.0`. It checks out this private repo with a read-only deploy key (`SOURCE_DEPLOY_KEY`) and runs on arm64 and x86_64 runners (one at a time). It tests, imports the Developer ID certificate into a temporary keychain, builds with licensing enabled, signs with Hardened Runtime, notarizes with an App Store Connect API key, staples, uploads the DMG to R2, and merges a signed item into `appcast.xml`. It never creates a GitHub Release or workflow artifact (both are public in a public repo). The ref must equal `CFBundleShortVersionString` in `mac/Info.plist`; bump `CFBundleVersion` for every release.
+
+**Secrets (set in chatclip-release, not here):** `SOURCE_DEPLOY_KEY`, `MACOS_CERT_P12` (base64 .p12), `MACOS_CERT_PASSWORD`, `APPLE_API_KEY_P8`, `APPLE_API_KEY_ID`, `APPLE_API_ISSUER_ID`, `SPARKLE_PRIVATE_KEY` (contents of `generate_keys -x`), `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`, and `GOOGLE_CLIENT_SECRET`.
+**Variables:** `R2_PUBLIC_BASE_URL` (custom domain of the bucket, no trailing slash), `SU_PUBLIC_ED_KEY`, `LEMON_PRODUCT_ID`, `CHECKOUT_URL`, `TRIAL_DAYS`, `DROPBOX_APP_KEY`, `GOOGLE_CLIENT_ID`.
+
+R2 setup: create a bucket, attach a custom domain, and create an R2 API token scoped to that bucket. The app reads `${R2_PUBLIC_BASE_URL}/appcast.xml`, so objects must be readable over HTTPS without credentials: anyone with the DMG link can download it, and the license key is what protects the product. There is no `ExportOptions.plist` because the app is not built with `xcodebuild`; `mac/release.sh` does the Developer ID signing.
+
+## Licensing
+
+Chatclip activates against Lemon Squeezy with the Mac's hardware UUID in `instance_name`. The key, instance ID and last-validated time are stored in the login Keychain (service `com.highlightdesk.app.license`). A license stays valid offline for 14 days after the last successful validation; a refunded, revoked or deleted key clears the Keychain on the next check and returns the app to the free plan.
