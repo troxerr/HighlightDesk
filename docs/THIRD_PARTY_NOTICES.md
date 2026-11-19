@@ -1,6 +1,6 @@
 # Third-party notices
 
-Chatclip bundles or links the following components. This file is a summary; the full license texts must ship with the release.
+ClipSpike bundles or links the following components. This file is a summary; the full license texts must ship with the release.
 
 ## FFmpeg
 
@@ -62,4 +62,4 @@ Public emote metadata and images are fetched from `7tv.io`/`cdn.7tv.app`; no cod
 
 ## Trademarks
 
-Twitch, TikTok, Dropbox, Google Drive, and Lemon Squeezy are trademarks of their respective owners. Chatclip is not affiliated with or endorsed by them.
+Twitch, TikTok, Dropbox, Google Drive, and Lemon Squeezy are trademarks of their respective owners. ClipSpike is not affiliated with or endorsed by them.

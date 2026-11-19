@@ -15,8 +15,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-APP_DIR="$ROOT/mac/build/Chatclip.app"
-ENTITLEMENTS="$ROOT/mac/Chatclip.entitlements"
+APP_DIR="$ROOT/mac/build/ClipSpike.app"
+ENTITLEMENTS="$ROOT/mac/ClipSpike.entitlements"
 IDENTITY="${DEVELOPER_ID_APPLICATION:-}"
 NOTARY_PROFILE="${NOTARY_PROFILE:-}"
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$ROOT/mac/Info.plist" 2>/dev/null || echo 0.0.0)"
@@ -107,13 +107,13 @@ echo "Signing the app…"
 codesign --force --options runtime --timestamp --sign "$IDENTITY" --entitlements "$ENTITLEMENTS" "$APP_DIR"
 codesign --verify --deep --strict --verbose=2 "$APP_DIR"
 
-STAGE="$(mktemp -d "${TMPDIR:-/tmp}/chatclip-dmg.XXXXXX")"
+STAGE="$(mktemp -d "${TMPDIR:-/tmp}/clipspike-dmg.XXXXXX")"
 trap 'rm -rf "$STAGE"' EXIT
 cp -R "$APP_DIR" "$STAGE/"
 ln -s /Applications "$STAGE/Applications"
-DMG="$ROOT/mac/build/Chatclip-$VERSION-$ARCH.dmg"
+DMG="$ROOT/mac/build/ClipSpike-$VERSION-$ARCH.dmg"
 rm -f "$DMG"
-hdiutil create -volname "Chatclip" -srcfolder "$STAGE" -ov -format UDZO "$DMG" >/dev/null
+hdiutil create -volname "ClipSpike" -srcfolder "$STAGE" -ov -format UDZO "$DMG" >/dev/null
 codesign --force --sign "$IDENTITY" "$DMG"
 
 echo "Notarizing $DMG…"
@@ -133,9 +133,9 @@ xcrun stapler staple "$DMG"
 xcrun stapler validate "$DMG"
 spctl -a -t open --context context:primary-signature -vv "$DMG"
 
-MOUNT="$(mktemp -d "${TMPDIR:-/tmp}/chatclip-mount.XXXXXX")"
+MOUNT="$(mktemp -d "${TMPDIR:-/tmp}/clipspike-mount.XXXXXX")"
 hdiutil attach "$DMG" -nobrowse -mountpoint "$MOUNT" >/dev/null
-spctl -a -t exec -vv "$MOUNT/Chatclip.app"
+spctl -a -t exec -vv "$MOUNT/ClipSpike.app"
 hdiutil detach "$MOUNT" >/dev/null
 rmdir "$MOUNT" 2>/dev/null || true
 

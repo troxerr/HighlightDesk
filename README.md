@@ -1,4 +1,4 @@
-# Chatclip
+# ClipSpike
 
 Kick live automatic highlights are being integrated. See [Kick setup and live
 validation status](docs/KICK.md) before using the separate Kick-enabled build.
@@ -7,7 +7,7 @@ validation status](docs/KICK.md) before using the separate Kick-enabled build.
 
 Open **Monitor…** on Capture (or Command–Shift–M) for live recorder health, chat decisions and per-channel learning. Rate clips with thumbs up/down; right-click for Duplicate / Started Late / Ended Early. **Mark Missed Moment** records a review timestamp. A separate worker logs decisions and tests bounded settings; validated changes apply only on a future capture after enough explicit ratings and later-session validation. Pause or roll back tuning from the monitor. See [Monitoring](docs/MONITORING.md) for evaluation limits, retention and CLI commands.
 
-Chatclip watches a Twitch channel's chat and saves the moments chat reacts to. A desktop clip is exported, reframed to 1080×1920 with the full video centered over a blurred background, and then either kept on the Mac or uploaded to Dropbox or Google Drive.
+ClipSpike watches a Twitch channel's chat and saves the moments chat reacts to. A desktop clip is exported, reframed to 1080×1920 with the full video centered over a blurred background, and then either kept on the Mac or uploaded to Dropbox or Google Drive.
 
 - **Local only** — no cloud account; clips stay on the Mac.
 - **Dropbox** — upload, verify the remote byte size, then delete the local videos.
@@ -47,7 +47,7 @@ Or open the deployed dashboard URL. The Twitch embed needs a real `parent` hostn
 
 1. Enter a Twitch username and load the channel.
 2. Play and unmute the Twitch player.
-3. Select **Start capture**, choose this Chatclip tab, and enable **Share tab audio**.
+3. Select **Start capture**, choose this ClipSpike tab, and enable **Share tab audio**.
 4. Leave the page open. A clip appears in **Session highlights** when chat spikes or someone triggers one.
 
 Browser clips are saved as captured in IndexedDB. They survive a refresh, but clearing site data removes them. Use **Download** or **Download all** for anything you want to keep. The browser dashboard is a separate local tool; 9:16 reframing and cloud storage are handled by the desktop recorder.
@@ -205,7 +205,7 @@ Google Drive uses the `drive.file` scope, so the app can only see files it creat
 
 ```sh
 npm run build:mac
-open "mac/build/Chatclip.app"
+open "mac/build/ClipSpike.app"
 ```
 
 `mac/build.sh` compiles the Cocoa wrapper, bundles Node, copies the engine modules and `Contents/Resources/runtime`, generates the app icon, and ad-hoc signs the bundle. Set `NODE_BIN=/path/to/node` to use a specific Node.
@@ -240,7 +240,7 @@ Unsigned QA DMGs are produced by:
 
 ```sh
 FORMAT=dmg ARCH=arm64 ./tools/package-unsigned.sh
-FORMAT=dmg ARCH=x86_64 APP="mac/build/Chatclip x86_64.app" ./tools/package-unsigned.sh
+FORMAT=dmg ARCH=x86_64 APP="mac/build/ClipSpike x86_64.app" ./tools/package-unsigned.sh
 ```
 
 Both are ad-hoc signed and will be rejected by Gatekeeper on another Mac until notarized.
@@ -257,7 +257,7 @@ The CI matrix builds both architectures. For QA packages:
 
 ```sh
 ARCH=arm64 FORMAT=zip ./tools/package-unsigned.sh
-ARCH=x86_64 APP="mac/build/Chatclip x86_64.app" FORMAT=zip ./tools/package-unsigned.sh
+ARCH=x86_64 APP="mac/build/ClipSpike x86_64.app" FORMAT=zip ./tools/package-unsigned.sh
 ```
 
 `FORMAT=dmg` uses `hdiutil` and requires an unsandboxed terminal/CI runner. The apps are ad-hoc signed for local use and are **not notarized**; a commercial release requires Developer ID signing and notarization.
@@ -312,7 +312,7 @@ docs/THIRD_PARTY_NOTICES.md Licenses and source-offer notes
 mac/main.m               Cocoa wrapper
 mac/build.sh             macOS app build
 mac/release.sh           Developer ID signing, notarization, DMG
-mac/Chatclip.entitlements Hardened-runtime entitlements
+mac/ClipSpike.entitlements Hardened-runtime entitlements
 docs/RELEASE.md          Production release path
 docs/PILOT.md            Paid pilot plan and launch gate
 docs/CI.md               macOS CI matrix for both architectures
@@ -340,7 +340,7 @@ test/                    Node tests
 - **Google refresh token expires every 7 days:** publish the OAuth consent screen; testing-mode tokens are short-lived.
 - **macOS asks for the login keychain password:** allow it once. Ad-hoc development rebuilds change the code signature, so Keychain may ask again; a signed release with a stable Developer ID has a stable identity. Set `HIGHLIGHT_DESK_KEYCHAIN=0` for a dev run that must not touch Keychain.
 - **Trial expired / license not active:** open **License…**, paste the key from the purchase email, and activate. Check that `LEMON_PRODUCT_ID` matches the product and that the Mac can reach the Lemon Squeezy API.
-- **No notifications:** enable **Notify When Clips Finish** in the app menu and allow Chatclip in System Settings → Notifications. Ad-hoc development builds may not register with Notification Center; a signed/notarized release does. Set `HIGHLIGHT_DESK_NOTIFICATIONS=0` for a dev run without the permission prompt.
+- **No notifications:** enable **Notify When Clips Finish** in the app menu and allow ClipSpike in System Settings → Notifications. Ad-hoc development builds may not register with Notification Center; a signed/notarized release does. Set `HIGHLIGHT_DESK_NOTIFICATIONS=0` for a dev run without the permission prompt.
 - **Need support:** use **Export Diagnostics…** from the app menu, review the zip, and send it with what happened. OAuth tokens, app secrets, and license keys are redacted from the config copy.
 - **A clip is queued, not uploaded:** inspect the active storage mode and `~/Library/Application Support/Highlight Desk/queue.json`; retries run every minute with exponential backoff.
 - **A local video disappeared:** expected when cloud mode has `deleteAfterUpload: true` and the upload was confirmed. The sidecar and history retain the remote path.
@@ -363,8 +363,8 @@ Generate a signed appcast after notarizing the DMG:
 
 ```sh
 VERSION=3.1.0 BUILD=5 \
-DOWNLOAD_URL="https://your-domain.example/Chatclip-3.1.0-arm64.dmg" \
-DMG="mac/build/Chatclip-arm64.dmg" \
+DOWNLOAD_URL="https://your-domain.example/ClipSpike-3.1.0-arm64.dmg" \
+DMG="mac/build/ClipSpike-arm64.dmg" \
 OUTPUT=site/appcast.xml \
 ./tools/make-appcast.sh
 ```
