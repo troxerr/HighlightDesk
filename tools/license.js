@@ -157,7 +157,7 @@ function normalizePolar(data, action, { benefitId = "", instanceId = "" } = {}) 
     customerEmail: (license.customer && license.customer.email) || "",
     expiresAt: license.expires_at || null,
     activationLimit: license.limit_activations || null,
-    activationUsage: license.usage === undefined ? null : license.usage
+    activationUsage: null // Polar's `usage` is a usage-quota counter, not the number of activations
   };
 }
 
@@ -209,7 +209,18 @@ async function polarRequest(action, {
     }
     throw new Error(polarErrorMessage(data, `License service failed (${response.status}).`));
   }
-  return normalizePolar(data, action, { benefitId, instanceId });
+  try {
+    return normalizePolar(data, action, { benefitId, instanceId });
+  } catch (error) {
+    // Polar has already created the activation by now. A key from another product must not
+    // keep one of the buyer's activation slots, so release it (best effort) before failing.
+    if (action === "activate" && data && data.id) {
+      try {
+        await polarRequest("deactivate", { licenseKey, instanceId: data.id, productId, apiBase, fetchImpl });
+      } catch {}
+    }
+    throw error;
+  }
 }
 
 async function licenseRequest(action, options = {}) {

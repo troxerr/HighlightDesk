@@ -183,7 +183,7 @@ test("polar activate posts JSON and normalizes to the shape the app reads", asyn
   assert.equal(result.productId, BENEFIT);
   assert.equal(result.customerEmail, "creator@example.com");
   assert.equal(result.activationLimit, 2);
-  assert.equal(result.activationUsage, 1);
+  assert.equal(result.activationUsage, null);
 });
 
 test("polar validate sends the activation id and keeps it in the result", async () => {
@@ -224,4 +224,21 @@ test("polar errors: 404 and 403 are final, 429 and 5xx are transient, the key ne
   await assert.rejects(() => call(503, {}), (e) => e.transient === true);
   await assert.rejects(() => call(422, { detail: [{ msg: "bad" }] }), (e) => !e.transient && /failed \(422\)/.test(e.message));
   await assert.rejects(() => licenseRequest("validate", { licenseKey: "k", instanceId: "a", productId: ORG, apiBase: "https://api.polar.sh", fetchImpl: async () => { throw new Error("offline"); } }), (e) => e.transient === true);
+});
+
+test("polar releases the activation it just created when the key belongs to another benefit", async () => {
+  const calls = [];
+  await assert.rejects(() => licenseRequest("activate", {
+    licenseKey: "KEY-1", productId: `${ORG}:${BENEFIT}`, apiBase: "https://api.polar.sh",
+    fetchImpl: async (url, options) => {
+      calls.push({ url, body: JSON.parse(options.body) });
+      return url.endsWith("/activate")
+        ? response({ id: "act-9", license_key: { ...POLAR_KEY, benefit_id: "33333333-3333-4333-8333-333333333333" } })
+        : { ok: true, status: 204, async json() { throw new Error("no body"); } };
+    }
+  }), /different product/);
+  assert.equal(calls.length, 2);
+  assert.match(calls[1].url, /\/deactivate$/);
+  assert.equal(calls[1].body.activation_id, "act-9");
+  assert.equal(calls[1].body.organization_id, ORG);
 });
