@@ -21,7 +21,7 @@ function response(body, status = 200, headers = {}) {
 }
 
 function tempFile(contents = "hello world") {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "chatclip-gdrive-"));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "clipspike-gdrive-"));
   const file = path.join(dir, "clip.mp4");
   fs.writeFileSync(file, contents);
   return { dir, file, size: Buffer.byteLength(contents) };
@@ -108,7 +108,7 @@ test("uses an existing folder instead of creating it", async () => {
     if (url.startsWith("https://www.googleapis.com/drive/v3/files?q=")) {
       lists += 1;
       return lists === 1
-        ? response({ files: [{ id: "existing-folder", name: "Chatclip" }] })
+        ? response({ files: [{ id: "existing-folder", name: "ClipSpike" }] })
         : response({ files: [] });
     }
     if (url.startsWith("https://www.googleapis.com/drive/v3/files?fields=")) {

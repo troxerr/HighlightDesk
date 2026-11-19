@@ -42,7 +42,7 @@ const NSTimeInterval HDLicenseGraceInterval = 14 * 24 * 60 * 60;
 + (NSString *)instanceName {
   NSString *host = [[NSHost currentHost] localizedName] ?: @"Mac";
   NSString *uuid = [self hardwareUUID];
-  return uuid.length ? [NSString stringWithFormat:@"%@ - %@", host, uuid] : [NSString stringWithFormat:@"%@ - Chatclip", host];
+  return uuid.length ? [NSString stringWithFormat:@"%@ - %@", host, uuid] : [NSString stringWithFormat:@"%@ - ClipSpike", host];
 }
 
 #pragma mark - Storage

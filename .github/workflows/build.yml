@@ -56,21 +56,21 @@ jobs:
 
       - name: Verify app
         run: |
-          codesign --verify --deep --strict "mac/build/Chatclip.app"
-          test -x "mac/build/Chatclip.app/Contents/Resources/runtime/bin/ffmpeg"
-          test -x "mac/build/Chatclip.app/Contents/Resources/runtime/bin/streamlink"
-          test -d "mac/build/Chatclip.app/Contents/Frameworks/Sparkle.framework"
+          codesign --verify --deep --strict "mac/build/ClipSpike.app"
+          test -x "mac/build/ClipSpike.app/Contents/Resources/runtime/bin/ffmpeg"
+          test -x "mac/build/ClipSpike.app/Contents/Resources/runtime/bin/streamlink"
+          test -d "mac/build/ClipSpike.app/Contents/Frameworks/Sparkle.framework"
 
       - name: Package unsigned artifact
         run: |
           mkdir -p mac/build/artifact
-          ditto -c -k --keepParent "mac/build/Chatclip.app" "mac/build/artifact/Chatclip-${RUNNER_ARCH}.zip"
-          hdiutil create -volname "Chatclip" -srcfolder "mac/build/Chatclip.app" -ov -format UDZO "mac/build/artifact/Chatclip-${RUNNER_ARCH}.dmg"
+          ditto -c -k --keepParent "mac/build/ClipSpike.app" "mac/build/artifact/ClipSpike-${RUNNER_ARCH}.zip"
+          hdiutil create -volname "ClipSpike" -srcfolder "mac/build/ClipSpike.app" -ov -format UDZO "mac/build/artifact/ClipSpike-${RUNNER_ARCH}.dmg"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Chatclip-${{ matrix.arch }}-unsigned
+          name: ClipSpike-${{ matrix.arch }}-unsigned
           path: mac/build/artifact/
           if-no-files-found: error
           retention-days: 14

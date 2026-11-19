@@ -21,7 +21,7 @@ test("default config has reframe and dropbox sections", () => {
 });
 
 test("readConfig handles missing, valid, and invalid files", () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "chatclip-config-"));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "clipspike-config-"));
   try {
     const missing = path.join(dir, "missing.json");
     assert.deepEqual(config.readConfig({ filePath: missing }).config, {});
@@ -44,7 +44,7 @@ test("readConfig handles missing, valid, and invalid files", () => {
 });
 
 test("readConfig honors HIGHLIGHT_DESK_CONFIG", () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "chatclip-config-"));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "clipspike-config-"));
   try {
     const file = path.join(dir, "custom.json");
     fs.writeFileSync(file, JSON.stringify({ reframe: { blur: 33 } }));

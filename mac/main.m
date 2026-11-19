@@ -623,7 +623,7 @@ static NSString *HDByteString(unsigned long long bytes) {
     window.releasedWhenClosed = NO;
     NSView *view = window.contentView;
 
-    NSTextField *heading = [NSTextField labelWithString:@"Chatclip License"];
+    NSTextField *heading = [NSTextField labelWithString:@"ClipSpike License"];
     heading.font = [NSFont boldSystemFontOfSize:20];
     heading.frame = NSMakeRect(24, 328, 472, 26);
     [view addSubview:heading];
@@ -1677,7 +1677,7 @@ static NSString *HDByteString(unsigned long long bytes) {
 - (void)notifyTitle:(NSString *)title body:(NSString *)body {
   if (!self.notificationsEnabled || !self.notificationsAuthorized) return;
   UNMutableNotificationContent *content = [UNMutableNotificationContent new];
-  content.title = title ?: @"Chatclip";
+  content.title = title ?: @"ClipSpike";
   content.body = body ?: @"";
   content.sound = [UNNotificationSound defaultSound];
   UNNotificationRequest *request = [UNNotificationRequest requestWithIdentifier:NSUUID.UUID.UUIDString content:content trigger:nil];
@@ -1738,12 +1738,12 @@ static NSString *HDByteString(unsigned long long bytes) {
   NSSavePanel *panel = [NSSavePanel savePanel];
   NSDateFormatter *stamp = [NSDateFormatter new];
   stamp.dateFormat = @"yyyyMMdd-HHmm";
-  panel.nameFieldStringValue = [NSString stringWithFormat:@"Chatclip-Diagnostics-%@.zip", [stamp stringFromDate:[NSDate date]]];
+  panel.nameFieldStringValue = [NSString stringWithFormat:@"ClipSpike-Diagnostics-%@.zip", [stamp stringFromDate:[NSDate date]]];
   panel.allowedContentTypes = @[[UTType typeWithFilenameExtension:@"zip"]];
   panel.canCreateDirectories = YES;
   [panel beginSheetModalForWindow:self.window completionHandler:^(NSModalResponse response) {
     if (response != NSModalResponseOK || !panel.URL) return;
-    NSString *temp = [NSTemporaryDirectory() stringByAppendingPathComponent:[NSString stringWithFormat:@"Chatclip-Diagnostics-%@", NSUUID.UUID.UUIDString]];
+    NSString *temp = [NSTemporaryDirectory() stringByAppendingPathComponent:[NSString stringWithFormat:@"ClipSpike-Diagnostics-%@", NSUUID.UUID.UUIDString]];
     NSFileManager *fm = [NSFileManager defaultManager];
     [fm createDirectoryAtPath:temp withIntermediateDirectories:YES attributes:nil error:nil];
 
@@ -1800,7 +1800,7 @@ static NSString *HDByteString(unsigned long long bytes) {
     [runtime addObject:[NSString stringWithFormat:@"codesign:\n%@", [self runDiagnosticCommand:@"/usr/bin/codesign" arguments:@[@"-dv", @"--verbose=2", NSBundle.mainBundle.bundlePath]]]];
     [[runtime componentsJoinedByString:@"\n\n"] writeToFile:[temp stringByAppendingPathComponent:@"runtime.txt"] atomically:YES encoding:NSUTF8StringEncoding error:nil];
 
-    NSString *readme = @"Chatclip diagnostics\n\nThis archive may contain local paths, clip history, and error logs. Review it before sharing.\nOAuth tokens, app secrets, and license keys are redacted from config-redacted.json.\n\nSend this zip with a short description of what happened.\n";
+    NSString *readme = @"ClipSpike diagnostics\n\nThis archive may contain local paths, clip history, and error logs. Review it before sharing.\nOAuth tokens, app secrets, and license keys are redacted from config-redacted.json.\n\nSend this zip with a short description of what happened.\n";
     [readme writeToFile:[temp stringByAppendingPathComponent:@"README.txt"] atomically:YES encoding:NSUTF8StringEncoding error:nil];
 
     NSString *zip = panel.URL.path;
@@ -1849,7 +1849,7 @@ static NSString *HDByteString(unsigned long long bytes) {
   [self updateLaunchAtLoginState];
   if (error) {
     [self alert:@"Could not update Launch at Login"
-           info:[NSString stringWithFormat:@"%@\n\nMove Chatclip to /Applications before enabling this.", error.localizedDescription]];
+           info:[NSString stringWithFormat:@"%@\n\nMove ClipSpike to /Applications before enabling this.", error.localizedDescription]];
   }
 }
 
@@ -1877,7 +1877,7 @@ static NSString *HDByteString(unsigned long long bytes) {
     window.releasedWhenClosed = NO;
     NSView *view = window.contentView;
 
-    NSTextField *heading = [NSTextField labelWithString:@"Welcome to Chatclip"];
+    NSTextField *heading = [NSTextField labelWithString:@"Welcome to ClipSpike"];
     heading.font = [NSFont boldSystemFontOfSize:22];
     heading.frame = NSMakeRect(24, 360, 512, 28);
     [view addSubview:heading];
@@ -2023,7 +2023,7 @@ static NSString *HDByteString(unsigned long long bytes) {
 
   self.stdoutBuffer = [NSMutableString new];
   self.logLines = [NSMutableArray array];
-  [self appendLogLine:[NSString stringWithFormat:@"Chatclip %@ (%@) started", NSBundle.mainBundle.infoDictionary[@"CFBundleShortVersionString"] ?: @"?", NSBundle.mainBundle.infoDictionary[@"CFBundleVersion"] ?: @"?"]];
+  [self appendLogLine:[NSString stringWithFormat:@"ClipSpike %@ (%@) started", NSBundle.mainBundle.infoDictionary[@"CFBundleShortVersionString"] ?: @"?", NSBundle.mainBundle.infoDictionary[@"CFBundleVersion"] ?: @"?"]];
 
   NSMenu *menu = [NSMenu new];
   NSMenuItem *appItem = [menu addItemWithTitle:@"" action:nil keyEquivalent:@""];
@@ -2062,7 +2062,7 @@ static NSString *HDByteString(unsigned long long bytes) {
   NSMenuItem *licenseItem = [appMenu addItemWithTitle:@"License…" action:@selector(showLicense:) keyEquivalent:@""];
   licenseItem.target = self;
   [appMenu addItem:[NSMenuItem separatorItem]];
-  [appMenu addItemWithTitle:@"Quit Chatclip" action:@selector(terminate:) keyEquivalent:@"q"];
+  [appMenu addItemWithTitle:@"Quit ClipSpike" action:@selector(terminate:) keyEquivalent:@"q"];
   appItem.submenu = appMenu;
   // Standard responder actions keep text editing and keyboard navigation native.
   NSMenuItem *editItem = [menu addItemWithTitle:@"Edit" action:nil keyEquivalent:@""];
@@ -2145,13 +2145,13 @@ static NSString *HDByteString(unsigned long long bytes) {
 - (void)installStatusItem {
   if (self.statusItem) return;
   NSStatusItem *item = [NSStatusBar.systemStatusBar statusItemWithLength:NSVariableStatusItemLength];
-  NSImage *icon = [HDSymbolImage(HDSymbolRoleCapture, 14, NSFontWeightMedium, @"Chatclip") copy];
+  NSImage *icon = [HDSymbolImage(HDSymbolRoleCapture, 14, NSFontWeightMedium, @"ClipSpike") copy];
   icon.template = YES;
   item.button.image = icon;
   item.button.imagePosition = NSImageLeft;
-  item.button.accessibilityLabel = @"Chatclip";
-  item.button.toolTip = @"Chatclip";
-  NSMenu *menu = [[NSMenu alloc] initWithTitle:@"Chatclip"];
+  item.button.accessibilityLabel = @"ClipSpike";
+  item.button.toolTip = @"ClipSpike";
+  NSMenu *menu = [[NSMenu alloc] initWithTitle:@"ClipSpike"];
   menu.delegate = self;
   self.statusStateItem = [menu addItemWithTitle:@"Idle" action:nil keyEquivalent:@""];
   [menu addItem:[NSMenuItem separatorItem]];
@@ -2163,7 +2163,7 @@ static NSString *HDByteString(unsigned long long bytes) {
   self.statusToggleItem = [menu addItemWithTitle:@"Start Capture" action:@selector(toggleCapture:) keyEquivalent:@""];
   self.statusToggleItem.target = self;
   [menu addItem:[NSMenuItem separatorItem]];
-  NSMenuItem *show = [menu addItemWithTitle:@"Show Chatclip" action:@selector(showMainWindow:) keyEquivalent:@""];
+  NSMenuItem *show = [menu addItemWithTitle:@"Show ClipSpike" action:@selector(showMainWindow:) keyEquivalent:@""];
   show.target = self;
   item.menu = menu;
   self.statusItem = item;
@@ -2599,7 +2599,7 @@ static NSString *HDByteString(unsigned long long bytes) {
     self.status.stringValue = [NSString stringWithFormat:@"Uploading to %@…", self.storageLabel ?: @"storage"];
   } else if ([type isEqualToString:@"review-ready"]) {
     NSString *message = [event[@"message"] isKindOfClass:NSString.class] ? event[@"message"] : @"Open Capture Monitor to review your highlights.";
-    [self notifyTitle:@"Chatclip" body:message];
+    [self notifyTitle:@"ClipSpike" body:message];
     [self logUsageEvent:@"review-ready" details:@{@"sessions": event[@"sessions"] ?: @0}];
   } else if ([type isEqualToString:@"clip-uploaded"]) {
     if ([event[@"queued"] boolValue]) [self logFeedbackAction:@"uploaded" clipId:event[@"clipId"] details:@{@"provider": event[@"provider"] ?: @"", @"queued": @YES}];
@@ -2683,7 +2683,7 @@ static NSString *HDByteString(unsigned long long bytes) {
     self.status.stringValue = message;
     [self logUsageEvent:@"engine-fatal" details:@{@"message": message ?: @"unknown"}];
     [self.ui setSessionState:HDSessionStateError status:message ?: @"Recorder stopped"];
-    [self alert:@"Chatclip stopped." info:message];
+    [self alert:@"ClipSpike stopped." info:message];
   }
   if (self.vodEvents && [type isEqualToString:@"clip-saved"]) {
     self.vodSaved += 1;
@@ -2728,7 +2728,7 @@ static NSString *HDByteString(unsigned long long bytes) {
   NSString *resource = NSBundle.mainBundle.resourcePath;
   NSString *background = [resource stringByAppendingPathComponent:@"background.cjs"];
   if (![[NSFileManager defaultManager] fileExistsAtPath:background]) {
-    [self alert:@"Chatclip is incomplete." info:@"background.cjs is missing from the app bundle. Rebuild with mac/build.sh."];
+    [self alert:@"ClipSpike is incomplete." info:@"background.cjs is missing from the app bundle. Rebuild with mac/build.sh."];
     return;
   }
 
@@ -2880,7 +2880,7 @@ static NSString *HDByteString(unsigned long long bytes) {
   NSString *resource = NSBundle.mainBundle.resourcePath;
   NSString *script = [resource stringByAppendingPathComponent:@"vod.cjs"];
   if (![[NSFileManager defaultManager] fileExistsAtPath:script]) {
-    [self alert:@"Chatclip is incomplete." info:@"vod.cjs is missing from the app bundle. Rebuild with mac/build.sh."];
+    [self alert:@"ClipSpike is incomplete." info:@"vod.cjs is missing from the app bundle. Rebuild with mac/build.sh."];
     return;
   }
   NSArray<NSString *> *paths = [self searchPaths];
@@ -3472,7 +3472,7 @@ static NSString *HDByteString(unsigned long long bytes) {
   if (self.vodTask.running && !self.task.running) {
     NSAlert *alert = [NSAlert new];
     alert.messageText = @"Still finding highlights.";
-    alert.informativeText = @"Cancel the VOD scan and quit Chatclip?";
+    alert.informativeText = @"Cancel the VOD scan and quit ClipSpike?";
     [alert addButtonWithTitle:@"Cancel Scan and Quit"];
     [alert addButtonWithTitle:@"Keep Running"];
     if ([alert runModal] != NSAlertFirstButtonReturn) return NO;
@@ -3482,7 +3482,7 @@ static NSString *HDByteString(unsigned long long bytes) {
   if (self.task.running) {
     NSAlert *alert = [NSAlert new];
     alert.messageText = @"Capture is still running.";
-    alert.informativeText = @"Stop recording and quit Chatclip?";
+    alert.informativeText = @"Stop recording and quit ClipSpike?";
     [alert addButtonWithTitle:@"Stop and Quit"];
     [alert addButtonWithTitle:@"Keep Running"];
     if ([alert runModal] != NSAlertFirstButtonReturn) return NO;

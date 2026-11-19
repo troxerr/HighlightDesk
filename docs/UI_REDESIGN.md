@@ -1,4 +1,4 @@
-# Chatclip UI redesign
+# ClipSpike UI redesign
 
 The native AppKit interface now prioritizes Capture, Clips, and Storage, with licensing under Settings. Capture starts at the top of the window and groups the channel input with its primary action. Decorative output artwork and the four dashboard metric cards were replaced by a session summary and recent clips.
 
@@ -12,7 +12,7 @@ From the project root:
 BUILD_DIR="$PWD/mac/build-redesign" zsh mac/build.sh
 ```
 
-The original running app at `mac/build/Chatclip.app` was left intact because its recorder was active. The redesigned app is at `mac/build-redesign/Chatclip.app`. Switch builds after finishing the active capture; no live cloud upload or new recording is required to review the interface.
+The original running app at `mac/build/ClipSpike.app` was left intact because its recorder was active. The redesigned app is at `mac/build-redesign/ClipSpike.app`. Switch builds after finishing the active capture; no live cloud upload or new recording is required to review the interface.
 
 ## Validation
 

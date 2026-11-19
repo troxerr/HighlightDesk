@@ -6,7 +6,7 @@ const path = require("node:path");
 const { createJobStore, defaultStateDir } = require("../lib/jobstore.js");
 
 function tempDir() {
-  return fs.mkdtempSync(path.join(os.tmpdir(), "chatclip-state-"));
+  return fs.mkdtempSync(path.join(os.tmpdir(), "clipspike-state-"));
 }
 
 test("queue and history round-trip through JSON files", () => {

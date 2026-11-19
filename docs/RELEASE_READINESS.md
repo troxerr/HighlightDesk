@@ -1,4 +1,4 @@
-# Chatclip 3.0 readiness report
+# ClipSpike 3.0 readiness report
 
 Date: 2026-11-15 · Version: 3.0.0 · Status: **blocked on external launch credentials**
 
@@ -26,11 +26,11 @@ Date: 2026-11-15 · Version: 3.0.0 · Status: **blocked on external launch crede
 
 Artifacts:
 
-- `mac/build/Chatclip.app` (arm64, ad-hoc)
-- `mac/build/Chatclip x86_64.app` (x86_64, ad-hoc)
-- `mac/build/Chatclip-3.0.0-arm64-unsigned.dmg`
-- `mac/build/Chatclip-3.0.0-x86_64-unsigned.dmg`
-- `mac/build/Chatclip-3.0.0-*.zip`
+- `mac/build/ClipSpike.app` (arm64, ad-hoc)
+- `mac/build/ClipSpike x86_64.app` (x86_64, ad-hoc)
+- `mac/build/ClipSpike-3.0.0-arm64-unsigned.dmg`
+- `mac/build/ClipSpike-3.0.0-x86_64-unsigned.dmg`
+- `mac/build/ClipSpike-3.0.0-*.zip`
 
 ## External blockers
 
