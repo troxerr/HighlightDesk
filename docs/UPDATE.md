@@ -18,7 +18,7 @@ The app embeds Sparkle 2.10.1 when `mac/vendor/Sparkle.framework` exists. A buil
 ## Release build
 
 ```sh
-SU_FEED_URL="https://your-domain.example/appcast.xml" \
+SU_FEED_URL="https://clipspike.com/appcast.xml" \
 SU_PUBLIC_ED_KEY="<public key>" \
 DEVELOPER_ID_APPLICATION="Developer ID Application: ..." \
 NOTARY_PROFILE="highlightdesk-notary" \
@@ -34,8 +34,8 @@ After the notarized DMG is uploaded:
 ```sh
 VERSION=3.1.0 \
 BUILD=5 \
-DOWNLOAD_URL="https://your-domain.example/Chatclip-3.1.0-arm64.dmg" \
-DMG="mac/build/Chatclip-arm64.dmg" \
+DOWNLOAD_URL="https://clipspike.com/ClipSpike-3.1.0-arm64.dmg" \
+DMG="mac/build/ClipSpike-arm64.dmg" \
 OUTPUT=site/appcast.xml \
 ./tools/make-appcast.sh
 ```

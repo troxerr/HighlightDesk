@@ -4,8 +4,8 @@ set -euo pipefail
 # Builds a signed Sparkle 2 appcast item for a notarized DMG.
 #
 #   VERSION=3.1.0 BUILD=5 \
-#   DOWNLOAD_URL=https://example.com/Chatclip-3.1.0-arm64.dmg \
-#   DMG="mac/build/Chatclip-3.1.0-arm64.dmg" \
+#   DOWNLOAD_URL=https://clipspike.com/ClipSpike-3.1.0-arm64.dmg \
+#   DMG="mac/build/ClipSpike-3.1.0-arm64.dmg" \
 #   OUTPUT=site/appcast.xml \
 #   ./tools/make-appcast.sh
 #
@@ -19,7 +19,7 @@ BUILD="${BUILD:?Set BUILD}"
 DMG="${DMG:?Set DMG}"
 DOWNLOAD_URL="${DOWNLOAD_URL:?Set DOWNLOAD_URL}"
 OUTPUT="${OUTPUT:-$ROOT/site/appcast.xml}"
-RELEASE_NOTES="${RELEASE_NOTES:-A new version of Chatclip is available.}"
+RELEASE_NOTES="${RELEASE_NOTES:-A new version of ClipSpike is available.}"
 SIGN_UPDATE="$ROOT/mac/vendor/sparkle/bin/sign_update"
 [[ -x "$SIGN_UPDATE" ]] || { echo "Missing Sparkle sign_update; run tools/fetch-sparkle.sh" >&2; exit 1; }
 [[ -f "$DMG" ]] || { echo "DMG not found: $DMG" >&2; exit 1; }
@@ -45,7 +45,7 @@ ITEM_FILE="$(mktemp "${TMPDIR:-/tmp}/appcast-item.XXXXXX")"
 trap 'rm -f "$ITEM_FILE"' EXIT
 cat > "$ITEM_FILE" <<XML
     <item>
-      <title>Chatclip ${VERSION}</title>
+      <title>ClipSpike ${VERSION}</title>
       <pubDate>${PUB_DATE}</pubDate>
       <sparkle:version>${BUILD}</sparkle:version>
       <sparkle:shortVersionString>${VERSION}</sparkle:shortVersionString>
@@ -82,9 +82,9 @@ else
      xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle"
      xmlns:dc="http://purl.org/dc/elements/1.1/">
   <channel>
-    <title>Chatclip</title>
+    <title>ClipSpike</title>
     <link>${DOWNLOAD_URL%/*}/</link>
-    <description>Chatclip releases</description>
+    <description>ClipSpike releases</description>
     <language>en</language>
 $(cat "$ITEM_FILE")
   </channel>

@@ -1,4 +1,4 @@
-# Chatclip presentation review
+# ClipSpike presentation review
 
 ## Design plan
 
@@ -15,9 +15,9 @@
 | Capture | View | Command-1 |
 | Clips | View | Command-2 |
 | Storage | View | Command-3 |
-| Save Highlight Now | Chatclip | Command-S |
-| Settings | Chatclip | Command-comma |
-| Capture Monitor | Chatclip | Command-Shift-M |
+| Save Highlight Now | ClipSpike | Command-S |
+| Settings | ClipSpike | Command-comma |
+| Capture Monitor | ClipSpike | Command-Shift-M |
 | Cut / Copy / Paste / Select All | Edit | Standard Mac shortcuts |
 | Undo / Redo | Edit | Command-Z / Command-Shift-Z |
 

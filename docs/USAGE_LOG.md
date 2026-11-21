@@ -1,4 +1,4 @@
-# Chatclip Usage Log
+# ClipSpike Usage Log
 
 Generated **2026-11-16T02:06:24.632Z** by `tools/usage-audit.js`. Local-only; no data was uploaded.
 

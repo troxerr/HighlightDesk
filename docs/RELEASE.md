@@ -57,7 +57,7 @@ NOTARY_PROFILE="highlightdesk-notary" \
 
 `--check` verifies the signing identity, notary credentials, bundled runtime, Sparkle, appcast public key, license product/checkout, and OAuth client IDs without signing anything. Unsigned CI artifacts are built by [docs/CI.md](CI.md).
 
-`mac/release.sh` signs nested Node/FFmpeg/Streamlink binaries and frameworks, signs the app with hardened runtime and `mac/Chatclip.entitlements`, builds a DMG, submits it to `notarytool`, staples it, and verifies Gatekeeper.
+`mac/release.sh` signs nested Node/FFmpeg/Streamlink binaries and frameworks, signs the app with hardened runtime and `mac/ClipSpike.entitlements`, builds a DMG, submits it to `notarytool`, staples it, and verifies Gatekeeper.
 
 Before release, confirm:
 
@@ -104,4 +104,4 @@ R2 setup: create a bucket, attach a custom domain, and create an R2 API token sc
 
 ## Licensing
 
-Chatclip activates against Lemon Squeezy with the Mac's hardware UUID in `instance_name`. The key, instance ID and last-validated time are stored in the login Keychain (service `com.highlightdesk.app.license`). A license stays valid offline for 14 days after the last successful validation; a refunded, revoked or deleted key clears the Keychain on the next check and returns the app to the free plan.
+ClipSpike activates against Lemon Squeezy with the Mac's hardware UUID in `instance_name`. The key, instance ID and last-validated time are stored in the login Keychain (service `com.highlightdesk.app.license`). A license stays valid offline for 14 days after the last successful validation; a refunded, revoked or deleted key clears the Keychain on the next check and returns the app to the free plan.

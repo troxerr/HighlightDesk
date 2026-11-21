@@ -6,7 +6,7 @@ const path = require("node:path");
 const { writeCrashReport, listCrashReports, MAX_REPORTS } = require("../lib/crashlog.js");
 
 function tempDir() {
-  return fs.mkdtempSync(path.join(os.tmpdir(), "chatclip-crash-"));
+  return fs.mkdtempSync(path.join(os.tmpdir(), "clipspike-crash-"));
 }
 
 test("writes a readable crash report with the stack and context", () => {
@@ -20,10 +20,8 @@ test("writes a readable crash report with the stack and context", () => {
     assert.match(report.error.stack, /boom/);
     assert.equal(report.context.channel, "someone");
     assert.equal(report.appVersion, "3.0.0");
-    // Windows file access is governed by ACLs and stat does not report POSIX permissions.
-    if (process.platform !== "win32") {
-      assert.equal(fs.statSync(file).mode & 0o777, 0o600);
-    }
+    // Windows has no POSIX permission bits, so the mode check only applies elsewhere.
+    if (process.platform !== "win32") assert.equal(fs.statSync(file).mode & 0o777, 0o600);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

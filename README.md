@@ -1,4 +1,4 @@
-# Chatclip
+# ClipSpike
 
 Kick live automatic highlights are being integrated. See [Kick setup and live
 validation status](docs/KICK.md) before using the separate Kick-enabled build.
@@ -7,7 +7,7 @@ validation status](docs/KICK.md) before using the separate Kick-enabled build.
 
 Open **Monitor…** on Capture (or Command–Shift–M) for live recorder health, chat decisions and per-channel learning. Rate clips with thumbs up/down; right-click for Duplicate / Started Late / Ended Early. **Mark Missed Moment** records a review timestamp. A separate worker logs decisions and tests bounded settings; validated changes apply only on a future capture after enough explicit ratings and later-session validation. Pause or roll back tuning from the monitor. See [Monitoring](docs/MONITORING.md) for evaluation limits, retention and CLI commands.
 
-Chatclip watches a Twitch channel's chat and saves the moments chat reacts to. A desktop clip is exported, reframed to 1080×1920 with the full video centered over a blurred background, and then either kept on the Mac or uploaded to Dropbox or Google Drive.
+ClipSpike watches a Twitch channel's chat and saves the moments chat reacts to. A desktop clip is exported, reframed to 1080×1920 with the full video centered over a blurred background, and then either kept on the Mac or uploaded to Dropbox or Google Drive.
 
 - **Local only** — no cloud account; clips stay on the Mac.
 - **Dropbox** — upload, verify the remote byte size, then delete the local videos.
@@ -47,7 +47,7 @@ Or open the deployed dashboard URL. The Twitch embed needs a real `parent` hostn
 
 1. Enter a Twitch username and load the channel.
 2. Play and unmute the Twitch player.
-3. Select **Start capture**, choose this Chatclip tab, and enable **Share tab audio**.
+3. Select **Start capture**, choose this ClipSpike tab, and enable **Share tab audio**.
 4. Leave the page open. A clip appears in **Session highlights** when chat spikes or someone triggers one.
 
 Browser clips are saved as captured in IndexedDB. They survive a refresh, but clearing site data removes them. Use **Download** or **Download all** for anything you want to keep. The browser dashboard is a separate local tool; 9:16 reframing and cloud storage are handled by the desktop recorder.
@@ -205,7 +205,7 @@ Google Drive uses the `drive.file` scope, so the app can only see files it creat
 
 ```sh
 npm run build:mac
-open "mac/build/Chatclip.app"
+open "mac/build/ClipSpike.app"
 ```
 
 `mac/build.sh` compiles the Cocoa wrapper, bundles Node, copies the engine modules and `Contents/Resources/runtime`, generates the app icon, and ad-hoc signs the bundle. Set `NODE_BIN=/path/to/node` to use a specific Node.
@@ -240,7 +240,7 @@ Unsigned QA DMGs are produced by:
 
 ```sh
 FORMAT=dmg ARCH=arm64 ./tools/package-unsigned.sh
-FORMAT=dmg ARCH=x86_64 APP="mac/build/Chatclip x86_64.app" ./tools/package-unsigned.sh
+FORMAT=dmg ARCH=x86_64 APP="mac/build/ClipSpike x86_64.app" ./tools/package-unsigned.sh
 ```
 
 Both are ad-hoc signed and will be rejected by Gatekeeper on another Mac until notarized.
@@ -257,7 +257,7 @@ The CI matrix builds both architectures. For QA packages:
 
 ```sh
 ARCH=arm64 FORMAT=zip ./tools/package-unsigned.sh
-ARCH=x86_64 APP="mac/build/Chatclip x86_64.app" FORMAT=zip ./tools/package-unsigned.sh
+ARCH=x86_64 APP="mac/build/ClipSpike x86_64.app" FORMAT=zip ./tools/package-unsigned.sh
 ```
 
 `FORMAT=dmg` uses `hdiutil` and requires an unsandboxed terminal/CI runner. The apps are ad-hoc signed for local use and are **not notarized**; a commercial release requires Developer ID signing and notarization.
@@ -312,7 +312,7 @@ docs/THIRD_PARTY_NOTICES.md Licenses and source-offer notes
 mac/main.m               Cocoa wrapper
 mac/build.sh             macOS app build
 mac/release.sh           Developer ID signing, notarization, DMG
-mac/Chatclip.entitlements Hardened-runtime entitlements
+mac/ClipSpike.entitlements Hardened-runtime entitlements
 docs/RELEASE.md          Production release path
 docs/PILOT.md            Paid pilot plan and launch gate
 docs/CI.md               macOS CI matrix for both architectures
@@ -340,7 +340,7 @@ test/                    Node tests
 - **Google refresh token expires every 7 days:** publish the OAuth consent screen; testing-mode tokens are short-lived.
 - **macOS asks for the login keychain password:** allow it once. Ad-hoc development rebuilds change the code signature, so Keychain may ask again; a signed release with a stable Developer ID has a stable identity. Set `HIGHLIGHT_DESK_KEYCHAIN=0` for a dev run that must not touch Keychain.
 - **Trial expired / license not active:** open **License…**, paste the key from the purchase email, and activate. Check that `LEMON_PRODUCT_ID` matches the product and that the Mac can reach the Lemon Squeezy API.
-- **No notifications:** enable **Notify When Clips Finish** in the app menu and allow Chatclip in System Settings → Notifications. Ad-hoc development builds may not register with Notification Center; a signed/notarized release does. Set `HIGHLIGHT_DESK_NOTIFICATIONS=0` for a dev run without the permission prompt.
+- **No notifications:** enable **Notify When Clips Finish** in the app menu and allow ClipSpike in System Settings → Notifications. Ad-hoc development builds may not register with Notification Center; a signed/notarized release does. Set `HIGHLIGHT_DESK_NOTIFICATIONS=0` for a dev run without the permission prompt.
 - **Need support:** use **Export Diagnostics…** from the app menu, review the zip, and send it with what happened. OAuth tokens, app secrets, and license keys are redacted from the config copy.
 - **A clip is queued, not uploaded:** inspect the active storage mode and `~/Library/Application Support/Highlight Desk/queue.json`; retries run every minute with exponential backoff.
 - **A local video disappeared:** expected when cloud mode has `deleteAfterUpload: true` and the upload was confirmed. The sidecar and history retain the remote path.
@@ -354,7 +354,7 @@ The app embeds [Sparkle 2.10.1](https://sparkle-project.org/) when `mac/vendor/S
 ```sh
 ./tools/fetch-sparkle.sh
 ./mac/vendor/sparkle/bin/generate_keys   # once; keep the private key out of git
-SU_FEED_URL="https://your-domain.example/appcast.xml" \
+SU_FEED_URL="https://clipspike.com/appcast.xml" \
 SU_PUBLIC_ED_KEY="<public key>" \
 npm run build:mac
 ```
@@ -363,13 +363,19 @@ Generate a signed appcast after notarizing the DMG:
 
 ```sh
 VERSION=3.1.0 BUILD=5 \
-DOWNLOAD_URL="https://your-domain.example/Chatclip-3.1.0-arm64.dmg" \
-DMG="mac/build/Chatclip-arm64.dmg" \
+DOWNLOAD_URL="https://clipspike.com/ClipSpike-3.1.0-arm64.dmg" \
+DMG="mac/build/ClipSpike-arm64.dmg" \
 OUTPUT=site/appcast.xml \
 ./tools/make-appcast.sh
 ```
 
 See [docs/UPDATE.md](docs/UPDATE.md) for CI keys, appcast hosting, and the update test checklist.
+
+## Source license
+
+ClipSpike is source-available under the [Functional Source License, Version 1.1, MIT Future License](LICENSE) (FSL-1.1-MIT). You may read, modify, and self-host the code for any purpose except offering a competing commercial product; each version converts to the MIT license on the second anniversary of its release.
+
+The license covers the code only. The ClipSpike name, logo, and app icon are not licensed for use by others.
 
 ## License and trial
 
@@ -391,7 +397,21 @@ Open **License…** in the app menu to see trial days, enter a key, activate, de
 - offline grace: 14 days after the last successful validation
 - instance limit: controlled by the Lemon Squeezy product (the UI recommends two Macs)
 
-Set `LEMON_API_BASE` only for testing or a proxy. A license is required to start a new capture after the trial ends; an already-running capture is not interrupted.
+### Using Polar instead of Lemon Squeezy
+
+`tools/license.js` also speaks to [Polar](https://docs.polar.sh/docs/benefits/license-keys), using the customer-portal license-key endpoints, which need no secret and are meant for desktop apps. The app code is unchanged; it reads the same result. Select Polar by pointing the API base at Polar (or set `LICENSE_PROVIDER=polar`):
+
+```sh
+LICENSE_REQUIRED=1 \
+LEMON_API_BASE=https://sandbox-api.polar.sh \          # https://api.polar.sh in production
+LEMON_PRODUCT_ID=<organization-id>:<license-key-benefit-id> \
+CHECKOUT_URL=https://buy.polar.sh/... \
+npm run build:mac
+```
+
+The product ID setting holds the Polar organization ID, optionally followed by `:` and the license-key benefit ID. With the benefit ID set, keys from any other product are rejected. Set the benefit's activation limit in the Polar dashboard (two Macs). Test in the sandbox first.
+
+Set `LEMON_API_BASE` only for testing or a proxy. After the trial ends the app drops to the free plan: 3 clean clips a week, then clips carry a watermark. A valid license removes the weekly limit and the watermark; an already-running capture is never interrupted.
 
 ## Commercial release
 

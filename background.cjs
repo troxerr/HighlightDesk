@@ -65,7 +65,7 @@ try {
   console.error(`Could not create the clip folder (${output}): ${error.message}`);
   process.exit(1);
 }
-const temp = fs.mkdtempSync(path.join(os.tmpdir(), "chatclip-"));
+const temp = fs.mkdtempSync(path.join(os.tmpdir(), "clipspike-"));
 const manifestFile = path.join(temp, "segments.csv");
 const EVENTS = process.env.HIGHLIGHT_DESK_EVENTS === "1";
 const smokeChat = streamSource.platform === "twitch" && Boolean(process.env.HIGHLIGHT_DESK_SMOKE && process.env.HIGHLIGHT_DESK_INPUT);
