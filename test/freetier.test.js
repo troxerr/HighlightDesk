@@ -7,7 +7,7 @@ const os = require("node:os");
 const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 const freeTier = require("../lib/freetier.js");
-const { buildReframeFilter, reframeClip } = require("../lib/reframe.js");
+const { buildArgs, buildReframeFilter, reframeClip } = require("../lib/reframe.js");
 
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), "hd-free-"));
 // The shipped app uses its bundled ffmpeg, which is missing drawtext and PNG decoding: test against it when present.
@@ -59,26 +59,35 @@ test("a corrupt usage file counts as a fresh week and never throws", () => {
 test("reframe filter is unchanged without a watermark and branches with one", () => {
   const base = { width: 1080, height: 1920, blur: 20, layout: "blur" };
   assert.match(buildReframeFilter(base), /overlay=\(W-w\)\/2:\(H-h\)\/2:format=auto,format=yuv420p\[v\]$/);
-  const marked = buildReframeFilter({ ...base, watermark: { file: "/tmp/hd/watermark.png" } });
-  assert.match(marked, /null\[vm\];movie=\/tmp\/hd\/watermark\.png/);
+  const watermark = { file: path.join(os.tmpdir(), "watermark test [1], draft.pam") };
+  const marked = buildReframeFilter({ ...base, watermark });
+  assert.match(marked, /null\[vm\];\[1:v\]scale=/);
   assert.match(marked, /\[vm\]\[wm\]overlay=.*format=yuv420p\[v\]$/);
-  assert.match(buildReframeFilter({ ...base, layout: "split", watermark: { file: "/tmp/hd/w.png" } }), /vstack=inputs=2,null\[vm\]/);
-  assert.throws(() => buildReframeFilter({ ...base, watermark: { file: "/tmp/has space/w.png" } }), /Unsafe watermark/);
-  const win = buildReframeFilter({ ...base, watermark: { file: "C:\\Users\\RUNNER~1\\Temp\\hd-overlay-x\\watermark.pam" } });
-  assert.match(win, /movie=C\\\\:\/Users\/RUNNER~1\/Temp\/hd-overlay-x\/watermark\.pam,/);
+  assert.match(buildReframeFilter({ ...base, layout: "split", watermark }), /vstack=inputs=2,null\[vm\]/);
+
+  const args = buildArgs({ ...base, input: "in.mp4", output: "out.mp4", encoder: "libx264", watermark });
+  const filterIndex = args.indexOf("-filter_complex");
+  assert.deepEqual(args.slice(filterIndex - 4, filterIndex), ["-i", "in.mp4", "-i", watermark.file]);
+  assert.equal(args[filterIndex + 1], marked);
 });
 
-test("renders a watermarked clip with the bundled filters", { skip: !have("ffmpeg") }, async () => {
+test("renders watermarked clips when the image path contains spaces", { skip: !have("ffmpeg") }, async () => {
   const dir = tmp();
-  const input = path.join(dir, "in.mp4");
-  const generated = spawnSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=640x360:rate=30", "-t", "2", "-pix_fmt", "yuv420p", input], { stdio: "ignore", timeout: 60000 });
-  assert.equal(generated.status, 0);
-  const watermark = freeTier.prepareWatermark();
-  assert.ok(watermark && fs.existsSync(watermark.file));
-  for (const layout of ["blur", "split"]) {
-    const output = path.join(dir, `${layout}.mp4`);
-    const result = await reframeClip({ input, output, width: 1080, height: 1920, crf: 24, preset: "ultrafast", layout, watermark, ffmpegPath: fs.existsSync(bundled) ? bundled : "ffmpeg" });
-    assert.equal(result.ok, true, result.error);
-    assert.ok(fs.statSync(output).size > 1000);
+  try {
+    const input = path.join(dir, "in.mp4");
+    const generated = spawnSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=640x360:rate=30", "-t", "2", "-pix_fmt", "yuv420p", input], { stdio: "ignore", timeout: 60000 });
+    assert.equal(generated.status, 0);
+    const prepared = freeTier.prepareWatermark();
+    assert.ok(prepared && fs.existsSync(prepared.file));
+    const watermark = { file: path.join(dir, "watermark test [1], draft.pam") };
+    fs.copyFileSync(prepared.file, watermark.file);
+    for (const layout of ["blur", "split"]) {
+      const output = path.join(dir, `${layout}.mp4`);
+      const result = await reframeClip({ input, output, width: 1080, height: 1920, crf: 24, preset: "ultrafast", layout, watermark, ffmpegPath: fs.existsSync(bundled) ? bundled : "ffmpeg" });
+      assert.equal(result.ok, true, result.error);
+      assert.ok(fs.statSync(output).size > 1000);
+    }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
   }
 });

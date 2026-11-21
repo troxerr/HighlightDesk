@@ -145,7 +145,7 @@ Set `reframe.layout` to `"split"` (or set `HIGHLIGHT_DESK_REFRAME_LAYOUT=split`)
 - `facecamCorner` — corner preset when `facecam` is `null`: `"top-left"`, `"top-right"`, `"bottom-left"` (default), or `"bottom-right"`.
 - `facecam` / `gameplay` — optional normalized `[0, 1]` crop rectangles (`{ "x": 0.015, "y": 0.70, "w": 0.25, "h": 0.28 }`) to override the corner preset or focus on a specific gameplay region.
 
-The default encoder is hardware H.264 (`h264_videotoolbox`) so a bundled commercial app does not require GPL `libx264`. Set `HIGHLIGHT_DESK_ENCODER=libx264` only for development environments that already have it.
+The default encoder is hardware H.264 (`h264_videotoolbox`) so a bundled commercial app does not require GPL `libx264`. Set `HIGHLIGHT_DESK_ENCODER=<encoder>` (for example `libx264`, only where your FFmpeg has it, or `libopenh264`) to force one; any other value, or `auto`, is ignored. On Windows the app probes `h264_nvenc`, `h264_qsv`, `h264_amf`, `h264_mf` and then the software `libopenh264`, and uses the first that really encodes.
 
 `reframe.priority` is `normal` or `belowNormal` and sets the CPU priority of the clip export and 9:16 encodes (`HIGHLIGHT_DESK_PRIORITY` overrides it). It defaults to `belowNormal` on Windows, where the app shares a PC with a game and streaming software, and to `normal` elsewhere. The live recorder only stream-copies and always runs at normal priority. This lowers CPU priority only; a GPU encoder (NVENC, QSV, AMF) still shares the GPU with the game.
 
